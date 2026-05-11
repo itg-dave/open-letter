@@ -1,0 +1,39 @@
+services:
+  app:
+    build: .
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - DATABASE_URL=postgres://diaetendeckel:${DB_PASSWORD:-devpass}@db:5432/diaetendeckel
+      - PORT=3000
+      - BASE_URL=${BASE_URL:-http://localhost:3000}
+      - NODE_ENV=development
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    command: ["sh", "-c", "bun db/setup.js && bun db/seed.js & bun server/index.js"]
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://localhost:3000/api/health').then(r => process.exit(r.ok ? 0 : 1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  db:
+    image: postgres:18-alpine
+    environment:
+      - POSTGRES_DB=diaetendeckel
+      - POSTGRES_USER=diaetendeckel
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-devpass}
+    volumes:
+      - pgdata-dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U diaetendeckel"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  pgdata-dev:

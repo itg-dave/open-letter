@@ -1,0 +1,1266 @@
+:root {
+  --rot: #ff0000;
+  --weiss: #ffffff;
+  --schwarz: #111111;
+  --akzent: #6f003c;
+  --akzent-hell: #ff0000;
+  --fond: #f4f1ec;
+  --linie: #1a1a1a;
+  --grau: #6b6b6b;
+  --grau-hell: #e6e6e6;
+}
+
+* { box-sizing: border-box }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--weiss);
+  color: var(--schwarz);
+  font-family: "Inter", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+body { overflow-x: hidden }
+a { color: inherit }
+button { font-family: inherit }
+
+.work { font-family: "Work Sans", "Inter", sans-serif }
+.mono { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace }
+
+/* ---------- Skip link ---------- */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  background: var(--rot);
+  color: #fff;
+  padding: 8px 16px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.skip-link:focus {
+  left: 0;
+}
+
+/* ---------- Top bar ---------- */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--weiss);
+  border-bottom: 1px solid #000;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 28px;
+}
+
+.wordmark {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: "Work Sans";
+  font-weight: 900;
+  font-size: 18px;
+  letter-spacing: -0.01em;
+}
+
+.wordmark .dot {
+  width: 14px;
+  height: 14px;
+  background: var(--rot);
+  border-radius: 2px;
+  transform: rotate(8deg);
+}
+
+.topbar nav {
+  display: flex;
+  gap: 28px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.topbar nav a {
+  text-decoration: none;
+  opacity: 0.7;
+  cursor: pointer;
+}
+
+.topbar nav a:hover { opacity: 1 }
+
+.topbar .cta {
+  background: #000;
+  color: #fff;
+  border: none;
+  padding: 10px 18px;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  font-family: "Work Sans";
+  letter-spacing: 0.01em;
+}
+
+.topbar .cta:hover { background: var(--rot) }
+
+/* ---------- Hero ---------- */
+.hero {
+  position: relative;
+  background: var(--weiss);
+  padding: 64px 28px 72px;
+  overflow: hidden;
+  border-bottom: 1px solid #000;
+}
+
+.hero-inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  position: relative;
+  z-index: 2;
+}
+
+.keil {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--akzent);
+  clip-path: polygon(0% 62%, 72% 18%, 100% 55%, 100% 100%, 0% 100%);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--rot);
+  color: #fff;
+  padding: 6px 12px;
+  font-family: "Work Sans";
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  margin-bottom: 28px;
+  position: relative;
+  z-index: 3;
+}
+
+.eyebrow .pulse {
+  width: 8px;
+  height: 8px;
+  background: #fff;
+  border-radius: 50%;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.4 }
+  50% { opacity: 1 }
+}
+
+h1.headline {
+  font-family: "Work Sans";
+  font-weight: 900;
+  font-size: clamp(56px, 9vw, 144px);
+  line-height: 0.92;
+  letter-spacing: -0.025em;
+  margin: 0 0 24px;
+  color: #000;
+  max-width: 14ch;
+  position: relative;
+  z-index: 3;
+}
+
+h1.headline .light { font-weight: 300 }
+h1.headline .rot { color: var(--rot) }
+
+h1.headline .banner {
+  background: var(--rot);
+  color: #fff;
+  padding: 0 0.15em;
+  display: inline-block;
+}
+
+.sub {
+  font-family: "Work Sans";
+  font-weight: 300;
+  font-size: clamp(20px, 2.2vw, 28px);
+  line-height: 1.25;
+  max-width: 38ch;
+  margin: 0 0 32px;
+  color: #000;
+  position: relative;
+  z-index: 3;
+  background: #fff;
+  display: inline-block;
+  padding: 18px 24px;
+  border: 1.5px solid #000;
+  box-shadow: 10px 10px 0 var(--rot);
+}
+
+.hero-row {
+  display: grid;
+  grid-template-columns: 1.4fr 0.9fr;
+  gap: 48px;
+  align-items: end;
+  margin-top: 48px;
+  position: relative;
+  z-index: 3;
+}
+
+@media (max-width: 900px) {
+  .hero-row { grid-template-columns: 1fr }
+}
+
+.counter-card {
+  background: #000;
+  color: #fff;
+  padding: 28px 30px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid #000;
+  box-shadow: 10px 10px 0 var(--rot);
+}
+
+.counter-card .label {
+  font-family: "Work Sans";
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+.counter-card .num {
+  font-family: "Work Sans";
+  font-weight: 900;
+  font-size: 72px;
+  line-height: 0.95;
+  letter-spacing: -0.03em;
+}
+
+.counter-card .num .unit {
+  font-size: 22px;
+  opacity: 0.7;
+  font-weight: 400;
+  margin-left: 8px;
+}
+
+.counter-card .meta {
+  font-size: 13px;
+  color: #bbb;
+  margin-top: 4px;
+}
+
+.counter-card .goal-bar {
+  height: 6px;
+  background: #222;
+  margin-top: 14px;
+  position: relative;
+  overflow: hidden;
+}
+
+.counter-card .goal-bar > div {
+  height: 100%;
+  background: var(--rot);
+  transition: width 0.8s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.counter-card .goal-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  margin-top: 8px;
+  color: #999;
+}
+
+.scrollcta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: "Work Sans";
+  font-weight: 700;
+  font-size: 14px;
+  color: #000;
+  background: #fff;
+  border: 1.5px solid #000;
+  padding: 14px 20px;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease;
+  text-decoration: none;
+}
+
+.scrollcta:hover {
+  background: #000;
+  color: #fff;
+  transform: translate(-2px, -2px);
+  box-shadow: 4px 4px 0 var(--rot);
+}
+
+/* Stoerer */
+.stoerer {
+  position: absolute;
+  top: 32px;
+  right: -30px;
+  width: 180px;
+  height: 180px;
+  background: var(--rot);
+  color: #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: rotate(8deg);
+  font-family: "Work Sans";
+  font-weight: 900;
+  font-size: 20px;
+  line-height: 0.95;
+  text-align: center;
+  padding: 18px;
+  letter-spacing: -0.01em;
+  z-index: 5;
+  animation: wobble 5s ease-in-out infinite;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
+}
+
+.stoerer small {
+  display: block;
+  font-weight: 400;
+  font-size: 11px;
+  margin-top: 6px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+@keyframes wobble {
+  0%, 100% { transform: rotate(8deg) }
+  50% { transform: rotate(12deg) scale(1.03) }
+}
+
+@media (max-width: 900px) {
+  .stoerer {
+    width: 130px;
+    height: 130px;
+    font-size: 15px;
+    top: auto;
+    bottom: -20px;
+    right: 12px;
+    padding: 12px;
+  }
+  .stoerer small {
+    font-size: 9px;
+    margin-top: 4px;
+  }
+}
+
+/* ---------- Brief ---------- */
+.section {
+  padding: 96px 28px;
+  border-bottom: 1px solid #000;
+}
+
+.section-inner {
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+  margin-bottom: 48px;
+}
+
+.section-head .num {
+  font-family: "Work Sans";
+  font-weight: 900;
+  font-size: 14px;
+  color: var(--rot);
+  letter-spacing: 0.05em;
+}
+
+.section-head h2 {
+  font-family: "Work Sans";
+  font-weight: 900;
+  font-size: clamp(34px, 4.2vw, 56px);
+  margin: 0;
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+}
+
+.brief-wrap {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 64px;
+}
+
+@media (max-width: 900px) {
+  .brief-wrap { grid-template-columns: 1fr; gap: 32px }
+}
+
+.brief-meta {
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.brief-meta dt {
+  font-family: "Work Sans";
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--grau);
+  margin-top: 18px;
+}
+
+.brief-meta dt:first-child { margin-top: 0 }
+
+.brief-meta dd {
+  margin: 4px 0 0;
+  font-weight: 500;
+}
+
+.brief-paper {
+  background: var(--fond);
+  padding: 56px 64px;
+  border: 1px solid #000;
+  box-shadow: 12px 12px 0 #000;
+  position: relative;
+}
+
+@media (max-width: 600px) {
+  .brief-paper { padding: 36px 28px }
+}
+
+.brief-paper::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  background: var(--rot);
+}
+
+.brief-paper h3 {
+  font-family: "Work Sans";
+  font-weight: 900;
+  font-size: clamp(28px, 3vw, 40px);
+  margin: 0 0 8px;
+  line-height: 1.02;
+  letter-spacing: -0.015em;
+}
+
+.brief-paper .anrede {
+  font-family: "Work Sans";
+  font-weight: 300;
+  font-size: clamp(20px, 2vw, 26px);
+  margin: 0 0 36px;
+  line-height: 1.2;
+}
+
+.brief-paper p {
+  font-size: 16.5px;
+  line-height: 1.65;
+  margin: 0 0 18px;
+  color: #111;
+}
+
+.brief-paper p.lead::first-letter {
+  font-family: "Work Sans";
+  font-weight: 900;
+  font-size: 62px;
+  float: left;
+  line-height: 0.85;
+  padding: 6px 10px 0 0;
+  color: var(--rot);
+}
+
+.brief-paper p strong { font-weight: 700 }
+
+.brief-paper .gruss {
+  font-family: "Work Sans";
+  font-weight: 700;
+  font-size: 18px;
+  margin-top: 36px;
+}
+
+.brief-paper .signers-line {
+  font-family: "Work Sans";
+  font-weight: 300;
+  font-size: 15px;
+  color: var(--grau);
+  margin-top: 6px;
+}
+
+.pullquote {
+  border-left: 5px solid var(--rot);
+  margin: 32px 0;
+  padding: 6px 0 6px 22px;
+  font-family: "Work Sans";
+  font-weight: 300;
+  font-size: 24px;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+
+/* ---------- Forderungen Strip ---------- */
+.demands {
+  background: #000;
+  color: #fff;
+  padding: 72px 28px;
+  border-bottom: 1px solid #000;
+}
+
+.demands-inner {
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.demands h2 {
+  font-family: "Work Sans";
+  font-weight: 900;
+  font-size: clamp(34px, 4.2vw, 56px);
+  margin: 0 0 40px;
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+}
+
+.demands h2 em {
+  font-style: normal;
+  color: var(--rot);
+}
+
+.demands-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: #222;
+  border: 1px solid #222;
+}
+
+@media (max-width: 780px) {
+  .demands-grid { grid-template-columns: 1fr }
+}
+
+.demand {
+  background: #000;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 240px;
+}
+
+.demand .n {
+  font-family: "Work Sans";
+  font-weight: 900;
+  font-size: 14px;
+  color: var(--rot);
+  letter-spacing: 0.05em;
+}
+
+.demand h4 {
+  font-family: "Work Sans";
+  font-weight: 900;
+  font-size: 24px;
+  margin: 0;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+}
+
+.demand p {
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: #bbb;
+  margin: 0;
+}
+
+/* ---------- Unterschreiben Section ---------- */
+.sign-section { background: var(--weiss) }
+
+.sign-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 64px;
+}
+
+@media (max-width: 900px) {
+  .sign-grid { grid-template-columns: 1fr; gap: 40px }
+}
+
+.sign-intro h2 {
+  font-family: "Work Sans";
+  font-weight: 900;
+  font-size: clamp(40px, 5vw, 72px);
+  line-height: 0.92;
+  margin: 0 0 20px;
+  letter-spacing: -0.025em;
+}
+
+.sign-intro h2 .rot { color: var(--rot) }
+
+.sign-intro .lead {
+  font-family: "Work Sans";
+  font-weight: 300;
+  font-size: 22px;
+  line-height: 1.25;
+  max-width: 32ch;
+  margin: 0 0 28px;
+}
+
+.sign-intro ul {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 24px;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.sign-intro ul li {
+  padding-left: 28px;
+  position: relative;
+  margin-bottom: 10px;
+}
+
+.sign-intro ul li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.55em;
+  width: 18px;
+  height: 4px;
+  background: var(--rot);
+}
+
+.sign-intro .privacy {
+  font-size: 13px;
+  color: var(--grau);
+  line-height: 1.55;
+  border-top: 1px solid #000;
+  padding-top: 18px;
+  margin-top: 22px;
+}
+
+.form-card {
+  background: var(--fond);
+  border: 1px solid #000;
+  padding: 36px;
+  box-shadow: 14px 14px 0 var(--rot);
+  position: relative;
+}
+
+@media (max-width: 600px) {
+  .form-card { padding: 24px }
+}
+
+.form-card .badge {
+  position: absolute;
+  top: -14px;
+  left: 24px;
+  background: #000;
+  color: #fff;
+  font-family: "Work Sans";
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 6px 12px;
+}
+
+.form-card h3 {
+  font-family: "Work Sans";
+  font-weight: 900;
+  font-size: 28px;
+  margin: 8px 0 6px;
+  letter-spacing: -0.01em;
+}
+
+.form-card .sub2 {
+  font-size: 14px;
+  color: var(--grau);
+  margin-bottom: 24px;
+  line-height: 1.5;
+}
+
+.field { margin-bottom: 16px }
+
+.field label {
+  display: block;
+  font-family: "Work Sans";
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.field label .opt {
+  font-weight: 400;
+  color: var(--grau);
+  text-transform: none;
+  letter-spacing: 0;
+  margin-left: 6px;
+  font-size: 12px;
+}
+
+.field input[type="text"],
+.field input[type="email"] {
+  width: 100%;
+  padding: 14px;
+  font-size: 15px;
+  font-family: "Inter", sans-serif;
+  background: #fff;
+  border: 1.5px solid #000;
+  outline: none;
+  transition: box-shadow 0.1s ease, transform 0.1s ease;
+}
+
+.field input:focus { box-shadow: 4px 4px 0 var(--rot) }
+
+.field .err {
+  color: #b00020;
+  font-size: 12px;
+  margin-top: 6px;
+  font-weight: 600;
+}
+
+.field input.invalid {
+  border-color: #b00020;
+  background: #fff5f5;
+}
+
+.checks {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 18px 0 26px;
+}
+
+.check {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  cursor: pointer;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.check input {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border: 1.5px solid #000;
+  background: #fff;
+  flex-shrink: 0;
+  margin-top: 1px;
+  cursor: pointer;
+  position: relative;
+}
+
+.check input:checked {
+  background: var(--rot);
+  border-color: var(--rot);
+}
+
+.check input:checked::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 1px;
+  width: 6px;
+  height: 11px;
+  border: solid #fff;
+  border-width: 0 2.5px 2.5px 0;
+  transform: rotate(45deg);
+}
+
+.submit {
+  width: 100%;
+  background: #000;
+  color: #fff;
+  border: 1.5px solid #000;
+  padding: 18px;
+  font-family: "Work Sans";
+  font-weight: 900;
+  font-size: 18px;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition: background 0.15s ease, transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.submit:hover:not(:disabled) {
+  background: var(--rot);
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 #000;
+}
+
+.submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.submit .arrow { transition: transform 0.15s ease }
+.submit:hover .arrow { transform: translateX(4px) }
+
+/* ---------- Modal ---------- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 20px;
+  animation: fadein 0.2s ease;
+}
+
+@keyframes fadein {
+  from { opacity: 0 }
+  to { opacity: 1 }
+}
+
+.modal {
+  background: #fff;
+  border: 1px solid #000;
+  max-width: 520px;
+  width: 100%;
+  box-shadow: 16px 16px 0 var(--rot);
+  position: relative;
+  animation: pop 0.25s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+@keyframes pop {
+  from { transform: translateY(20px) scale(0.97); opacity: 0 }
+  to { transform: translateY(0) scale(1); opacity: 1 }
+}
+
+.modal-head {
+  background: var(--rot);
+  color: #fff;
+  padding: 22px 28px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-head h3 {
+  font-family: "Work Sans";
+  font-weight: 900;
+  font-size: 22px;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.modal-head button {
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 24px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 4px;
+}
+
+.modal-body {
+  padding: 32px 28px;
+}
+
+.modal-body p {
+  margin: 0 0 14px;
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.modal-body .email-pill {
+  display: inline-block;
+  background: #000;
+  color: #fff;
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+  padding: 4px 10px;
+  margin: 4px 0 18px;
+}
+
+.modal-body .confirm-btn {
+  width: 100%;
+  margin-top: 18px;
+  padding: 16px;
+  background: #000;
+  color: #fff;
+  border: 1.5px solid #000;
+  font-family: "Work Sans";
+  font-weight: 900;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.modal-body .confirm-btn:hover { background: var(--rot) }
+
+/* Success modal */
+.modal.success .modal-head { background: #0a7a3a }
+
+.modal.success .check-anim {
+  width: 80px;
+  height: 80px;
+  margin: 8px auto 18px;
+  border-radius: 50%;
+  background: #0a7a3a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: bounce 0.5s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+@keyframes bounce {
+  0% { transform: scale(0) }
+  60% { transform: scale(1.15) }
+  100% { transform: scale(1) }
+}
+
+.modal.success .check-anim svg {
+  width: 42px;
+  height: 42px;
+  color: #fff;
+}
+
+/* ---------- Unterzeichner Section ---------- */
+.signers-section {
+  background: var(--fond);
+  border-bottom: 1px solid #000;
+}
+
+.signers-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 24px;
+  margin-bottom: 40px;
+}
+
+.signers-head h2 {
+  font-family: "Work Sans";
+  font-weight: 900;
+  font-size: clamp(34px, 4.2vw, 56px);
+  margin: 0;
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+}
+
+.signers-head .total {
+  font-family: "Work Sans";
+  font-weight: 300;
+  font-size: 22px;
+  color: var(--grau);
+}
+
+.signers-head .total b {
+  color: #000;
+  font-weight: 900;
+  font-size: 30px;
+}
+
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: #000;
+  border: 1px solid #000;
+  margin-bottom: 48px;
+}
+
+@media (max-width: 780px) {
+  .stats-row { grid-template-columns: repeat(2, 1fr) }
+}
+
+.stat {
+  background: var(--fond);
+  padding: 22px 24px;
+}
+
+.stat .v {
+  font-family: "Work Sans";
+  font-weight: 900;
+  font-size: 36px;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.stat .k {
+  font-family: "Work Sans";
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--grau);
+  margin-top: 6px;
+}
+
+.filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+
+.filter-chip {
+  border: 1.5px solid #000;
+  background: transparent;
+  padding: 8px 14px;
+  font-family: "Work Sans";
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.filter-chip:hover {
+  background: #000;
+  color: #fff;
+}
+
+.filter-chip.active {
+  background: #000;
+  color: #fff;
+}
+
+.search {
+  flex: 1;
+  min-width: 200px;
+  padding: 8px 14px;
+  border: 1.5px solid #000;
+  font-family: "Inter", sans-serif;
+  font-size: 14px;
+  background: #fff;
+}
+
+.signers-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: #000;
+  border: 1px solid #000;
+}
+
+@media (max-width: 780px) {
+  .signers-grid { grid-template-columns: 1fr }
+}
+
+.signer {
+  background: var(--fond);
+  padding: 18px 20px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  transition: background 0.12s ease;
+}
+
+.signer.new {
+  animation: newrow 2s ease;
+  background: #fff4f4;
+}
+
+@keyframes newrow {
+  0% { background: var(--rot); color: #fff }
+  100% { background: var(--fond); color: inherit }
+}
+
+.signer .avatar {
+  width: 42px;
+  height: 42px;
+  background: #000;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Work Sans";
+  font-weight: 900;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.signer .info {
+  flex: 1;
+  min-width: 0;
+}
+
+.signer .name {
+  font-family: "Work Sans";
+  font-weight: 700;
+  font-size: 15px;
+  line-height: 1.2;
+  letter-spacing: -0.005em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signer .kv {
+  font-size: 12px;
+  color: var(--grau);
+  margin-top: 2px;
+}
+
+.signer .time {
+  font-size: 11px;
+  color: var(--grau);
+  font-family: ui-monospace, monospace;
+  flex-shrink: 0;
+}
+
+.signers-foot {
+  margin-top: 32px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  color: var(--grau);
+}
+
+.signers-foot button {
+  background: transparent;
+  border: 1.5px solid #000;
+  color: #000;
+  padding: 10px 18px;
+  font-family: "Work Sans";
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.signers-foot button:hover {
+  background: #000;
+  color: #fff;
+}
+
+/* ---------- Footer ---------- */
+footer {
+  background: #000;
+  color: #fff;
+  padding: 64px 28px 32px;
+}
+
+.footer-inner {
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.footer-top {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr;
+  gap: 48px;
+  margin-bottom: 48px;
+}
+
+@media (max-width: 780px) {
+  .footer-top { grid-template-columns: 1fr; gap: 32px }
+}
+
+.footer-top h4 {
+  font-family: "Work Sans";
+  font-weight: 900;
+  font-size: 18px;
+  margin: 0 0 14px;
+  letter-spacing: -0.01em;
+}
+
+.footer-top p,
+.footer-top a {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: #bbb;
+  text-decoration: none;
+  display: block;
+  margin-bottom: 6px;
+}
+
+.footer-top a:hover { color: #fff }
+
+.footer-disclaimer {
+  background: #1a1a1a;
+  border-left: 4px solid var(--rot);
+  padding: 18px 22px;
+  font-size: 13px;
+  color: #ccc;
+  line-height: 1.6;
+  margin-top: 24px;
+}
+
+.footer-bottom {
+  border-top: 1px solid #333;
+  padding-top: 24px;
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 12px;
+  color: #888;
+}
+
+/* "you" highlight */
+.you-pill {
+  display: inline-block;
+  background: var(--rot);
+  color: #fff;
+  font-family: "Work Sans";
+  font-weight: 700;
+  font-size: 10px;
+  padding: 2px 6px;
+  margin-left: 8px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+/* ---------- Loading / Error states ---------- */
+.loading-spinner {
+  display: flex;
+  justify-content: center;
+  padding: 48px;
+  color: var(--grau);
+  font-size: 14px;
+}
+
+.error-message {
+  text-align: center;
+  padding: 48px;
+  color: var(--grau);
+  font-size: 14px;
+}
+
+/* ---------- Autocomplete dropdown ---------- */
+.autocomplete-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1.5px solid #000;
+  border-top: none;
+  z-index: 10;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.autocomplete-option {
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: 14px;
+  border-bottom: 1px solid #eee;
+}
+
+.autocomplete-option:hover {
+  background: var(--fond);
+}
