@@ -19,6 +19,7 @@ diaetendeckel/
 ├── .env.example
 ├── .gitignore
 ├── Dockerfile                 # Production multi-stage build
+├── Dockerfile.dev             # Dev/demo build (includes seed + trickle)
 ├── .dockerignore
 ├── docker-compose.yml         # Production (optional bundled Postgres)
 ├── docker-compose.dev.yml     # Dev/demo (Postgres + seed data + trickle)
