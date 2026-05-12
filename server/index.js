@@ -1,9 +1,16 @@
 import homepage from "../index.html";
-import { getSigners, getStats, insertSigner, confirmSigner, healthCheck, close } from "./db.js";
+import {
+  getSigners,
+  getStats,
+  insertSigner,
+  confirmSigner,
+  healthCheck,
+  close,
+} from "./db.js";
 import { sendVerificationEmail } from "./email.js";
 import { checkRateLimit } from "./ratelimit.js";
 
-const PORT = parseInt(process.env.PORT || "3000", 10);
+const PORT = parseInt(process.env.PORT || "3001", 10);
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 const isDev = process.env.NODE_ENV !== "production";
 
@@ -15,7 +22,10 @@ function sanitize(str) {
 }
 
 function sanitizeEmail(str) {
-  return String(str || "").trim().toLowerCase().slice(0, 254);
+  return String(str || "")
+    .trim()
+    .toLowerCase()
+    .slice(0, 254);
 }
 
 function isValidEmail(email) {
@@ -96,12 +106,17 @@ const server = Bun.serve({
       async POST(req) {
         try {
           const ip = getClientIp(req);
-          const { allowed, retryAfter } = checkRateLimit(ip, "sign", 3, 15 * 60 * 1000);
+          const { allowed, retryAfter } = checkRateLimit(
+            ip,
+            "sign",
+            3,
+            15 * 60 * 1000,
+          );
           if (!allowed) {
             return json(
               { error: "Zu viele Anfragen. Bitte versuche es später erneut." },
               429,
-              { "Retry-After": String(retryAfter) }
+              { "Retry-After": String(retryAfter) },
             );
           }
 
@@ -112,10 +127,16 @@ const server = Bun.serve({
           const newsletter = Boolean(body.newsletter);
 
           if (name.length < 2) {
-            return json({ error: "Name muss mindestens 2 Zeichen lang sein." }, 400);
+            return json(
+              { error: "Name muss mindestens 2 Zeichen lang sein." },
+              400,
+            );
           }
           if (!isValidEmail(email)) {
-            return json({ error: "Bitte gib eine gültige E-Mail-Adresse an." }, 400);
+            return json(
+              { error: "Bitte gib eine gültige E-Mail-Adresse an." },
+              400,
+            );
           }
 
           const token = crypto.randomUUID();
@@ -134,7 +155,12 @@ const server = Bun.serve({
             return json({ ok: true });
           }
 
-          await sendVerificationEmail({ to: email, name, token, baseUrl: BASE_URL });
+          await sendVerificationEmail({
+            to: email,
+            name,
+            token,
+            baseUrl: BASE_URL,
+          });
 
           return json({ ok: true });
         } catch (err) {
@@ -167,7 +193,9 @@ const server = Bun.serve({
   },
 });
 
-console.log(`Server running on ${server.url} (${isDev ? "development" : "production"})`);
+console.log(
+  `Server running on ${server.url} (${isDev ? "development" : "production"})`,
+);
 
 function shutdown() {
   console.log("Shutting down...");

@@ -25,6 +25,11 @@ body { overflow-x: hidden }
 a { color: inherit }
 button { font-family: inherit }
 
+:focus-visible {
+  outline: 2px solid var(--rot);
+  outline-offset: 2px;
+}
+
 .work { font-family: "Work Sans", "Inter", sans-serif }
 .mono { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace }
 
@@ -95,6 +100,7 @@ button { font-family: inherit }
   color: #fff;
   border: none;
   padding: 10px 18px;
+  min-height: 44px;
   font-weight: 700;
   font-size: 14px;
   cursor: pointer;
@@ -142,7 +148,7 @@ button { font-family: inherit }
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  background: var(--rot);
+  background: #c00;
   color: #fff;
   padding: 6px 12px;
   font-family: "Work Sans";
@@ -1012,6 +1018,7 @@ h1.headline .banner {
   border: 1.5px solid #000;
   background: transparent;
   padding: 8px 14px;
+  min-height: 44px;
   font-family: "Work Sans";
   font-weight: 700;
   font-size: 13px;
@@ -1162,7 +1169,7 @@ footer {
   .footer-top { grid-template-columns: 1fr; gap: 32px }
 }
 
-.footer-top h4 {
+.footer-top h3 {
   font-family: "Work Sans";
   font-weight: 900;
   font-size: 18px;

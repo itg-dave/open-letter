@@ -3,7 +3,9 @@
     "allow": [
       "Bash(bun install *)",
       "PowerShell(bun install)",
-      "mcp__Claude_Preview__preview_start"
+      "mcp__Claude_Preview__preview_start",
+      "WebFetch(domain:xn--ditendeckel-yhb.jetzt)",
+      "WebFetch(domain:diaetendeckel.jetzt)"
     ]
   }
 }

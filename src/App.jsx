@@ -350,6 +350,7 @@ export default function App() {
                 <div
                   className="goal-bar"
                   role="progressbar"
+                  aria-label="Fortschritt zum Unterschriftenziel"
                   aria-valuenow={pct}
                   aria-valuemin={0}
                   aria-valuemax={100}
@@ -387,8 +388,8 @@ export default function App() {
                   onClick={() => scrollTo("brief")}
                   style={{
                     background: "transparent",
-                    color: "#fff",
-                    borderColor: "#fff",
+                    color: "#000",
+                    borderColor: "#000",
                   }}
                 >
                   Brief lesen
@@ -698,7 +699,7 @@ export default function App() {
         <div className="footer-inner">
           <div className="footer-top">
             <div>
-              <h4>Gehaltsdeckel jetzt.</h4>
+              <h3>Gehaltsdeckel jetzt.</h3>
               <p>
                 Eine offene Initiative aus den Kreisverbänden. Kein offizielles
                 Schreiben des Parteivorstandes oder der Bundestagsfraktion.
@@ -710,7 +711,7 @@ export default function App() {
               </div>
             </div>
             <div>
-              <h4>Kontakt</h4>
+              <h3>Kontakt</h3>
               <a href="mailto:kontakt@diaetendeckel.jetzt">
                 kontakt@diaetendeckel.jetzt
               </a>
@@ -718,7 +719,7 @@ export default function App() {
               <a href="#">Mitmachen im Kreisverband</a>
             </div>
             <div>
-              <h4>Rechtliches</h4>
+              <h3>Rechtliches</h3>
               <a href="#">Impressum</a>
               <a href="#">Datenschutz</a>
             </div>
