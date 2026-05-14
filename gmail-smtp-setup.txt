@@ -1,8 +1,35 @@
-Gmail SMTP Setup — gehaltsdeckel.jetzt
-========================================
+Gmail / Google Workspace SMTP Setup — gehaltsdeckel.jetzt
+==========================================================
 
-GOAL: Use Gmail as SMTP relay, sending FROM noreply@gehaltsdeckel.jetzt
+GOAL: Use Google as SMTP relay, sending FROM noreply@gehaltsdeckel.jetzt
       without the "via gmail.com" annotation in recipients' email clients.
+
+SMTP SERVER (same for both options below)
+------------------------------------------
+  Host:     smtp.gmail.com
+  Port:     587
+  Security: STARTTLS
+
+
+OPTION A — Google Workspace (recommended, cleaner)
+----------------------------------------------------
+If your MX records already point to Google (Google Workspace / Google MX),
+you can create a real noreply@gehaltsdeckel.jetzt account in Workspace and
+use it directly — no "via gmail.com" annotation, no extra steps.
+
+  1. In Google Admin (admin.google.com) create the user noreply@gehaltsdeckel.jetzt
+     (or use an existing Workspace account you want to send from)
+  2. Enable 2-Step Verification on that account
+  3. Create an App Password for it (see Step 1 below for how)
+  4. Set in .env:
+       GMAIL_USER=noreply@gehaltsdeckel.jetzt
+       GMAIL_APP_PASSWORD=xxxx xxxx xxxx xxxx
+
+
+OPTION B — Personal Gmail with "Send mail as"
+----------------------------------------------
+If you are using a personal @gmail.com account and want it to send as
+noreply@gehaltsdeckel.jetzt, follow Steps 1–3 below.
 
 
 STEP 1 — Create a Gmail App Password
@@ -20,7 +47,11 @@ STEP 2 — Add credentials to .env
 -----------------------------------
 Add these two lines to your .env file on the server:
 
-  GMAIL_USER=yourname@gmail.com
+  # Google Workspace account:
+  GMAIL_USER=noreply@gehaltsdeckel.jetzt
+  # OR personal Gmail account:
+  # GMAIL_USER=yourname@gmail.com
+
   GMAIL_APP_PASSWORD=xxxx xxxx xxxx xxxx
 
 
@@ -58,11 +89,25 @@ This step makes Gmail send natively as noreply@gehaltsdeckel.jetzt.
     Name: Gehaltsdeckel Initiative
     Email: noreply@gehaltsdeckel.jetzt
     Uncheck "Treat as an alias"
+    → click "Next Step"
 
-3d. Gmail will send a confirmation code to noreply@gehaltsdeckel.jetzt.
-    Retrieve it and enter it in Gmail to complete verification.
+3d. IMPORTANT — SMTP server dialog:
+    Gmail shows this because you unchecked "Treat as an alias".
+    Enter Gmail's own SMTP here:
 
-3e. Set noreply@gehaltsdeckel.jetzt as default sender in Gmail settings
+      SMTP Server: smtp.gmail.com
+      Port:        587
+      Username:    yourname@gmail.com   ← your full Gmail address
+      Password:    your 16-char App Password (from Step 1)
+      Security:    TLS (recommended)
+
+    → click "Add Account"
+
+3e. Gmail sends a confirmation code to noreply@gehaltsdeckel.jetzt.
+    The forwarding rule from 3a delivers it to your Gmail inbox.
+    Enter the code to complete verification.
+
+3f. Set noreply@gehaltsdeckel.jetzt as default sender in Gmail settings
     if desired.
 
 

@@ -10,6 +10,24 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+export async function sendDeletionEmail({ to, token, baseUrl }) {
+  const deleteUrl = `${baseUrl}/api/delete/${token}`;
+
+  await transporter.sendMail({
+    from: '"Gehaltsdeckel Initiative" <noreply@gehaltsdeckel.jetzt>',
+    to,
+    subject: "Deine Unterschrift löschen — Gehaltsdeckel jetzt",
+    html: `
+      <p>Hallo,</p>
+      <p>du hast die Löschung deiner Unterschrift und aller gespeicherten Daten angefordert.</p>
+      <p><a href="${deleteUrl}">Klicke hier, um deine Daten unwiderruflich zu löschen</a></p>
+      <p>Der Link ist 24 Stunden gültig. Wenn du diese Anfrage nicht gestellt hast, kannst du diese E-Mail ignorieren.</p>
+      <p>Mit solidarischen Grüßen<br>Initiative Gehaltsdeckel</p>
+    `,
+    text: `Hallo,\n\ndu hast die Löschung deiner Unterschrift angefordert.\n\nKlicke hier zum Löschen:\n${deleteUrl}\n\nDer Link ist 24 Stunden gültig. Wenn du diese Anfrage nicht gestellt hast, ignoriere diese E-Mail.\n\nMit solidarischen Grüßen\nInitiative Gehaltsdeckel`,
+  });
+}
+
 export async function sendVerificationEmail({ to, name, token, baseUrl }) {
   const confirmUrl = `${baseUrl}/api/confirm/${token}`;
 

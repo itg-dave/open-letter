@@ -110,6 +110,26 @@ export async function confirmSigner(token) {
   return result.length > 0;
 }
 
+export async function createDeletionToken(email, token, expiresAt) {
+  const result = await sql`
+    UPDATE signers
+    SET deletion_token = ${token}, deletion_token_expires_at = ${expiresAt}
+    WHERE email = ${email}
+    RETURNING id
+  `;
+  return result.length > 0;
+}
+
+export async function deleteSigner(token) {
+  const result = await sql`
+    DELETE FROM signers
+    WHERE deletion_token = ${token}
+      AND deletion_token_expires_at > NOW()
+    RETURNING id
+  `;
+  return result.length > 0;
+}
+
 export async function healthCheck() {
   try {
     await sql`SELECT 1`;

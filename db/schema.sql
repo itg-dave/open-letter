@@ -26,3 +26,10 @@ CREATE INDEX IF NOT EXISTS idx_signers_token
 CREATE INDEX IF NOT EXISTS idx_signers_kreisverband
   ON signers (kreisverband)
   WHERE kreisverband != '' AND verified = TRUE;
+
+ALTER TABLE signers ADD COLUMN IF NOT EXISTS deletion_token TEXT UNIQUE;
+ALTER TABLE signers ADD COLUMN IF NOT EXISTS deletion_token_expires_at TIMESTAMPTZ;
+
+CREATE INDEX IF NOT EXISTS idx_signers_deletion_token
+  ON signers (deletion_token)
+  WHERE deletion_token IS NOT NULL;

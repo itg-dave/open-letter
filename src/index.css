@@ -1606,3 +1606,119 @@ footer {
     justify-content: center;
   }
 }
+
+/* ---------- Footer link buttons (Impressum / Datenschutz) ---------- */
+.footer-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--grau);
+  text-decoration: none;
+  display: block;
+  margin-bottom: 6px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.footer-link:hover {
+  color: var(--akzent);
+}
+
+.footer-link:focus-visible {
+  outline: 2px solid var(--rot);
+  outline-offset: 2px;
+}
+
+/* ---------- Legal modals (Impressum / Datenschutz) ---------- */
+.modal.modal-legal {
+  max-width: 640px;
+}
+
+.modal-legal-body {
+  max-height: 70vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.modal-legal-body h4 {
+  font-family: "Work Sans";
+  font-weight: 900;
+  font-size: 16px;
+  margin: 0 0 16px;
+  letter-spacing: -0.01em;
+}
+
+.modal-legal-body h5 {
+  font-family: "Work Sans";
+  font-weight: 700;
+  font-size: 12px;
+  margin: 22px 0 8px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--akzent);
+}
+
+.modal-legal-body hr {
+  border: none;
+  border-top: 1px solid var(--grau-hell);
+  margin: 24px 0;
+}
+
+/* ---------- Deletion form inside Datenschutz modal ---------- */
+.deletion-form {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.deletion-form input[type="email"] {
+  flex: 1;
+  min-width: 180px;
+  padding: 10px 14px;
+  border: 1.5px solid var(--akzent);
+  font-family: inherit;
+  font-size: 14px;
+  background: var(--weiss);
+  color: var(--schwarz);
+  outline: none;
+}
+
+.deletion-form input[type="email"]:focus {
+  border-color: var(--rot);
+}
+
+.deletion-form button {
+  padding: 10px 18px;
+  background: var(--akzent);
+  color: var(--weiss);
+  border: 1.5px solid var(--akzent);
+  font-family: "Work Sans";
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease;
+}
+
+.deletion-form button:hover {
+  background: var(--rot);
+  border-color: var(--rot);
+}
+
+.deletion-form button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.deletion-sent {
+  background: var(--fond);
+  border-left: 4px solid var(--akzent);
+  padding: 14px 18px;
+  font-size: 14px;
+  line-height: 1.55;
+  margin-top: 12px;
+}

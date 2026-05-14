@@ -4,10 +4,12 @@ import {
   getStats,
   insertSigner,
   confirmSigner,
+  createDeletionToken,
+  deleteSigner,
   healthCheck,
   close,
 } from "./db.js";
-import { sendVerificationEmail } from "./email.js";
+import { sendVerificationEmail, sendDeletionEmail } from "./email.js";
 import { checkRateLimit } from "./ratelimit.js";
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
@@ -201,6 +203,69 @@ const server = Bun.serve({
           );
         } catch (err) {
           console.error("GET /api/confirm error:", err);
+          return Response.redirect(`${BASE_URL}/?error=server-error`, 302);
+        }
+      },
+    },
+
+    "/api/request-deletion": {
+      async POST(req) {
+        try {
+          const ip = getClientIp(req);
+          const { allowed, retryAfter } = checkRateLimit(
+            ip,
+            "deletion",
+            3,
+            15 * 60 * 1000,
+          );
+          if (!allowed) {
+            return json({ ok: true }, 200, {
+              "Retry-After": String(retryAfter),
+            });
+          }
+
+          const body = await req.json();
+          const email = sanitizeEmail(body.email);
+
+          if (!isValidEmail(email)) {
+            return json({ ok: true });
+          }
+
+          const token = crypto.randomUUID();
+          const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+          const found = await createDeletionToken(email, token, expiresAt);
+          if (found) {
+            await sendDeletionEmail({
+              to: email,
+              token,
+              baseUrl: getBaseUrl(req),
+            });
+          }
+
+          return json({ ok: true });
+        } catch (err) {
+          console.error("POST /api/request-deletion error:", err);
+          return json({ ok: true });
+        }
+      },
+    },
+
+    "/api/delete/:token": {
+      async GET(req) {
+        try {
+          const { token } = req.params;
+          const deleted = await deleteSigner(token);
+
+          if (deleted) {
+            return Response.redirect(`${getBaseUrl(req)}/?deleted=1`, 302);
+          }
+          return Response.redirect(
+            `${getBaseUrl(req)}/?error=delete-token-expired`,
+            302,
+          );
+        } catch (err) {
+          console.error("GET /api/delete error:", err);
           return Response.redirect(`${BASE_URL}/?error=server-error`, 302);
         }
       },

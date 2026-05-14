@@ -131,6 +131,9 @@ export default function App() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [submitError, setSubmitError] = useState(null);
   const [navOpen, setNavOpen] = useState(false);
+  const [showImpressum, setShowImpressum] = useState(false);
+  const [showDatenschutz, setShowDatenschutz] = useState(false);
+  const [showDeleted, setShowDeleted] = useState(false);
 
   const emailTrapRef = useFocusTrap(!!emailModal);
   const successTrapRef = useFocusTrap(showSuccess);
@@ -210,9 +213,17 @@ export default function App() {
       fetchStats();
       fetchSigners(filter, search, 0, false);
       window.history.replaceState({}, "", window.location.pathname);
+    } else if (params.get("deleted") === "1") {
+      setShowDeleted(true);
+      window.history.replaceState({}, "", window.location.pathname);
     } else if (params.get("error") === "token-expired") {
       setSubmitError(
         "Der Bestätigungslink ist abgelaufen. Bitte unterschreibe erneut.",
+      );
+      window.history.replaceState({}, "", window.location.pathname);
+    } else if (params.get("error") === "delete-token-expired") {
+      setSubmitError(
+        "Der Löschlink ist abgelaufen. Bitte fordere über die Datenschutzseite einen neuen an.",
       );
       window.history.replaceState({}, "", window.location.pathname);
     }
@@ -262,12 +273,15 @@ export default function App() {
       if (e.key === "Escape") {
         if (showSuccess) closeSuccess();
         else if (emailModal) closeModal();
+        else if (showImpressum) setShowImpressum(false);
+        else if (showDatenschutz) setShowDatenschutz(false);
+        else if (showDeleted) setShowDeleted(false);
         else if (navOpen) setNavOpen(false);
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [showSuccess, emailModal, navOpen]);
+  }, [showSuccess, emailModal, showImpressum, showDatenschutz, showDeleted, navOpen]);
 
   const total = stats.total;
   const pct = Math.min(100, Math.round((total / ZIEL) * 100));
@@ -756,14 +770,26 @@ export default function App() {
             </div>
             <div>
               <h3>Kontakt</h3>
-              <a href="mailto:kontakt@gehaltsdeckel-jetzt.de">
-                kontakt@gehaltsdeckel-jetzt.de
+              <a href="mailto:kontakt@gehaltsdeckel.jetzt">
+                kontakt@gehaltsdeckel.jetzt
               </a>
             </div>
             <div>
               <h3>Rechtliches</h3>
-              <a href="#">Impressum</a>
-              <a href="#">Datenschutz</a>
+              <button
+                type="button"
+                className="footer-link"
+                onClick={() => setShowImpressum(true)}
+              >
+                Impressum
+              </button>
+              <button
+                type="button"
+                className="footer-link"
+                onClick={() => setShowDatenschutz(true)}
+              >
+                Datenschutz
+              </button>
             </div>
           </div>
         </div>
@@ -859,6 +885,65 @@ export default function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {showDeleted && (
+        <div
+          className="modal-overlay"
+          onClick={() => setShowDeleted(false)}
+          role="presentation"
+        >
+          <div
+            className="modal success"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="deleted-modal-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-head">
+              <h3 id="deleted-modal-title">Daten gelöscht</h3>
+              <button
+                onClick={() => setShowDeleted(false)}
+                aria-label="Schließen"
+              >
+                ×
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="check-anim">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+              </div>
+              <p className="success-title">Erledigt.</p>
+              <p>
+                Deine Unterschrift und alle damit verbundenen Daten wurden
+                unwiderruflich gelöscht.
+              </p>
+              <button
+                className="confirm-btn"
+                onClick={() => setShowDeleted(false)}
+              >
+                Schließen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showImpressum && (
+        <ImpressumModal onClose={() => setShowImpressum(false)} />
+      )}
+
+      {showDatenschutz && (
+        <DatenschutzModal onClose={() => setShowDatenschutz(false)} />
       )}
     </>
   );
@@ -1050,5 +1135,215 @@ function SignForm({ onSubmit, serverError }) {
         deine E-Mail. Erst danach zählt deine Unterschrift.
       </p>
     </form>
+  );
+}
+
+function ImpressumModal({ onClose }) {
+  const trapRef = useFocusTrap(true);
+  return (
+    <div className="modal-overlay" onClick={onClose} role="presentation">
+      <div
+        className="modal modal-legal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="impressum-title"
+        onClick={(e) => e.stopPropagation()}
+        ref={trapRef}
+      >
+        <div className="modal-head">
+          <h3 id="impressum-title">Impressum</h3>
+          <button onClick={onClose} aria-label="Schließen">
+            ×
+          </button>
+        </div>
+        <div className="modal-body">
+          <p>
+            <strong>Marlen Borchardt</strong>
+            <br />
+            Volckmarstr. 5
+            <br />
+            04317 Leipzig
+          </p>
+          <p>
+            <a href="mailto:kontakt@gehaltsdeckel.jetzt">
+              kontakt@gehaltsdeckel.jetzt
+            </a>
+          </p>
+          <p style={{ marginTop: 16, color: "var(--grau)", fontSize: 13 }}>
+            Diese Website ist kein offizielles Angebot der Partei Die Linke.
+            Es handelt sich um eine private Initiative von Parteimitgliedern
+            an der Basis.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DatenschutzModal({ onClose }) {
+  const trapRef = useFocusTrap(true);
+  const [deletionEmail, setDeletionEmail] = useState("");
+  const [deletionStatus, setDeletionStatus] = useState("idle");
+
+  async function handleDeletion(e) {
+    e.preventDefault();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(deletionEmail.trim())) return;
+    setDeletionStatus("submitting");
+    try {
+      await fetch("/api/request-deletion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: deletionEmail.trim() }),
+      });
+      setDeletionStatus("sent");
+    } catch {
+      setDeletionStatus("error");
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose} role="presentation">
+      <div
+        className="modal modal-legal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="datenschutz-title"
+        onClick={(e) => e.stopPropagation()}
+        ref={trapRef}
+      >
+        <div className="modal-head">
+          <h3 id="datenschutz-title">Datenschutzerklärung</h3>
+          <button onClick={onClose} aria-label="Schließen">
+            ×
+          </button>
+        </div>
+        <div className="modal-body modal-legal-body">
+          <h4>I. Informationen gemäß Art. 13 DS-GVO</h4>
+
+          <h5>1. Verantwortliche</h5>
+          <p>
+            Verantwortlich für diese Website ist:
+            <br />
+            <strong>Marlen Borchardt</strong>
+            <br />
+            Volckmarstr. 5, 04317 Leipzig
+            <br />
+            <a href="mailto:kontakt@gehaltsdeckel.jetzt">
+              kontakt@gehaltsdeckel.jetzt
+            </a>
+          </p>
+          <p>
+            Ein Datenschutzbeauftragter ist nicht zu benennen, da es sich um
+            eine private Initiative handelt.
+          </p>
+
+          <h5>2. Welche Daten werden verarbeitet?</h5>
+          <p>
+            <strong>a) Server-Protokolldateien</strong>
+            <br />
+            Bei jedem Zugriff werden vorübergehend Daten gespeichert:
+            IP-Adresse, Datum und Uhrzeit, aufgerufene Seite, Browser und
+            Betriebssystem sowie Referrer-URL. Rechtsgrundlage ist Art. 6
+            Abs. 1 lit. f DS-GVO (berechtigtes Interesse am sicheren Betrieb).
+            Die Protokolldateien werden spätestens nach 7 Tagen gelöscht.
+          </p>
+          <p>
+            <strong>b) Unterschriften</strong>
+            <br />
+            Beim Mitzeichnen werden Name, E-Mail-Adresse sowie optionaler
+            Kreisverband gespeichert. Rechtsgrundlage ist deine ausdrückliche
+            Einwilligung (Art. 6 Abs. 1 lit. a DS-GVO). Die Daten werden{" "}
+            <strong>ausschließlich für diese Petition verwendet</strong> und
+            nicht an Dritte weitergegeben oder für andere Zwecke genutzt. Sie
+            werden für die Dauer der Initiative gespeichert und bei Beendigung
+            der Kampagne vollständig gelöscht — spätestens jedoch 3 Jahre nach
+            Unterzeichnung (§ 195 BGB) oder auf frühere Anfrage.
+          </p>
+          <p>
+            <strong>c) Newsletter / Kampagnen-Updates</strong>
+            <br />
+            Kampagnen-E-Mails werden{" "}
+            <strong>
+              ausschließlich versendet, wenn du beim Unterschreiben die
+              entsprechende Checkbox aktiviert hast
+            </strong>
+            . Du kannst diese Einwilligung jederzeit widerrufen — über das
+            Löschformular unten oder durch Antwort auf eine Kampagnen-E-Mail.
+          </p>
+
+          <h5>3. Deine Rechte</h5>
+          <p>
+            Du hast das Recht auf Auskunft (Art. 15), Berichtigung (Art. 16),
+            Löschung (Art. 17), Einschränkung der Verarbeitung (Art. 18) sowie
+            Datenübertragbarkeit (Art. 20 DS-GVO). Für Anfragen wende dich an{" "}
+            <a href="mailto:kontakt@gehaltsdeckel.jetzt">
+              kontakt@gehaltsdeckel.jetzt
+            </a>
+            .
+          </p>
+          <p>
+            Du hast außerdem das Recht, aus Gründen deiner besonderen Situation
+            jederzeit Widerspruch gegen die Verarbeitung einzulegen
+            (Art. 21 Abs. 1 DS-GVO).
+          </p>
+
+          <h5>4. Beschwerderecht</h5>
+          <p>
+            Wenn du der Ansicht bist, dass die Verarbeitung deiner Daten gegen
+            Datenschutzrecht verstößt, kannst du dich bei der zuständigen
+            Aufsichtsbehörde beschweren:
+          </p>
+          <p>
+            Bundesbeauftragte für den Datenschutz und die Informationsfreiheit
+            (BfDI) —{" "}
+            <a
+              href="https://www.bfdi.bund.de"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              www.bfdi.bund.de
+            </a>
+          </p>
+
+          <hr />
+
+          <h5>Unterschrift löschen</h5>
+          <p>
+            Du kannst deine Unterschrift und alle damit gespeicherten Daten
+            jederzeit löschen lassen. Gib dazu deine E-Mail-Adresse ein — wir
+            schicken dir einen Löschlink.
+          </p>
+
+          {deletionStatus === "sent" ? (
+            <p className="deletion-sent">
+              Wenn deine E-Mail-Adresse bei uns hinterlegt ist, haben wir dir
+              einen Löschlink geschickt. Bitte prüfe auch deinen Spam-Ordner.
+            </p>
+          ) : (
+            <form className="deletion-form" onSubmit={handleDeletion} noValidate>
+              <input
+                type="email"
+                value={deletionEmail}
+                onChange={(e) => setDeletionEmail(e.target.value)}
+                placeholder="deine@email.de"
+                required
+                disabled={deletionStatus === "submitting"}
+                aria-label="E-Mail-Adresse für Löschanfrage"
+              />
+              <button type="submit" disabled={deletionStatus === "submitting"}>
+                {deletionStatus === "submitting"
+                  ? "Wird gesendet…"
+                  : "Löschlink anfordern"}
+              </button>
+              {deletionStatus === "error" && (
+                <p className="err" role="alert">
+                  Verbindungsfehler. Bitte versuche es erneut.
+                </p>
+              )}
+            </form>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
