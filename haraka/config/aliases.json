@@ -1,0 +1,10 @@
+{
+  "@gehaltsdeckel.jetzt": {
+    "action": "alias",
+    "to": "gehaltsdeckel.jetzt@gmail.com"
+  },
+  "dmarc-reports@gehaltsdeckel.jetzt": {
+    "action": "alias",
+    "to": "gehaltsdeckel.jetzt@gmail.com"
+  }
+}

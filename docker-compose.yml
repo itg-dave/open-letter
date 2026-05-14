@@ -8,13 +8,24 @@ services:
       - PORT=3000
       - BASE_URL=${BASE_URL:-http://localhost:3000}
       - NODE_ENV=production
+      - SMTP_HOST=haraka
+      - SMTP_PORT=587
     depends_on:
       db:
         condition: service_healthy
         required: false
+      haraka:
+        condition: service_healthy
+        required: false
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "bun", "-e", "fetch('http://localhost:3000/api/health').then(r => process.exit(r.ok ? 0 : 1))"]
+      test:
+        [
+          "CMD",
+          "bun",
+          "-e",
+          "fetch('http://localhost:3000/api/health').then(r => process.exit(r.ok ? 0 : 1))",
+        ]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -36,6 +47,21 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+
+  haraka:
+    build:
+      context: ./haraka
+    ports:
+      - "25:25"
+    volumes:
+      - ./haraka/config/dkim:/haraka/config/dkim:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 25 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
 volumes:
   pgdata:
