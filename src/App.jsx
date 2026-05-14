@@ -311,7 +311,10 @@ export default function App() {
             Unterstützer*innen
           </a>
         </nav>
-        <button className="cta topbar-cta" onClick={() => scrollTo("unterzeichnen")}>
+        <button
+          className="cta topbar-cta"
+          onClick={() => scrollTo("unterzeichnen")}
+        >
           Mitzeichnen <span aria-hidden="true">→</span>
         </button>
         <button
@@ -837,9 +840,7 @@ export default function App() {
                   <polyline points="20 6 9 17 4 12"></polyline>
                 </svg>
               </div>
-              <p className="success-title">
-                Solidarisch dabei.
-              </p>
+              <p className="success-title">Solidarisch dabei.</p>
               <p>
                 Deine Unterschrift ist jetzt Teil des offenen Briefes. Teile ihn
                 mit deinem Kreisverband — wir wollen vor dem nächsten Parteitag
@@ -1036,12 +1037,13 @@ function SignForm({ onSubmit, serverError }) {
             jederzeit abbestellbar).
           </span>
         </label>
-
       </div>
 
       <button type="submit" className="submit" disabled={submitting}>
         {submitting ? "Wird gesendet…" : "Jetzt mitzeichnen"}{" "}
-        <span className="arrow" aria-hidden="true">→</span>
+        <span className="arrow" aria-hidden="true">
+          →
+        </span>
       </button>
       <p className="form-legal">
         Mit Klick auf „Mitzeichnen" schicken wir dir einen Bestätigungslink an

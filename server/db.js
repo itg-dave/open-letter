@@ -6,7 +6,12 @@ const sql = postgres(process.env.DATABASE_URL, {
   connect_timeout: 10,
 });
 
-export async function getSigners({ filter = "alle", search = "", limit = 18, offset = 0 }) {
+export async function getSigners({
+  filter = "alle",
+  search = "",
+  limit = 18,
+  offset = 0,
+}) {
   limit = Math.min(Math.max(1, limit), 100);
   offset = Math.max(0, offset);
 
@@ -22,7 +27,7 @@ export async function getSigners({ filter = "alle", search = "", limit = 18, off
   if (search.trim()) {
     params.push(`%${search.trim().toLowerCase()}%`);
     conditions.push(
-      `(LOWER(s.name) LIKE $${params.length} OR LOWER(s.kreisverband) LIKE $${params.length})`
+      `(LOWER(s.name) LIKE $${params.length} OR LOWER(s.kreisverband) LIKE $${params.length})`,
     );
   }
 
@@ -30,7 +35,7 @@ export async function getSigners({ filter = "alle", search = "", limit = 18, off
 
   const countResult = await sql.unsafe(
     `SELECT COUNT(*)::int AS total FROM signers s WHERE ${where}`,
-    params
+    params,
   );
 
   params.push(limit, offset);
@@ -40,7 +45,7 @@ export async function getSigners({ filter = "alle", search = "", limit = 18, off
      WHERE ${where}
      ORDER BY s.created_at DESC
      LIMIT $${params.length - 1} OFFSET $${params.length}`,
-    params
+    params,
   );
 
   return { signers, total: countResult[0].total };
@@ -58,7 +63,15 @@ export async function getStats() {
   return row;
 }
 
-export async function insertSigner({ name, email, kv, newsletter, showPublicly, token, expiresAt }) {
+export async function insertSigner({
+  name,
+  email,
+  kv,
+  newsletter,
+  showPublicly,
+  token,
+  expiresAt,
+}) {
   const result = await sql`
     INSERT INTO signers (name, email, kreisverband, newsletter, show_publicly, verification_token, token_expires_at)
     VALUES (${name}, ${email}, ${kv}, ${newsletter}, ${showPublicly}, ${token}, ${expiresAt})

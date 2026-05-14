@@ -16,7 +16,7 @@ const ALLOWED_ORIGINS = new Set(
   (process.env.ALLOWED_ORIGINS || BASE_URL)
     .split(",")
     .map((s) => s.trim())
-    .filter(Boolean)
+    .filter(Boolean),
 );
 const isDev = process.env.NODE_ENV !== "production";
 
@@ -195,7 +195,10 @@ const server = Bun.serve({
           if (confirmed) {
             return Response.redirect(`${getBaseUrl(req)}/?confirmed=1`, 302);
           }
-          return Response.redirect(`${getBaseUrl(req)}/?error=token-expired`, 302);
+          return Response.redirect(
+            `${getBaseUrl(req)}/?error=token-expired`,
+            302,
+          );
         } catch (err) {
           console.error("GET /api/confirm error:", err);
           return Response.redirect(`${BASE_URL}/?error=server-error`, 302);
