@@ -71,23 +71,52 @@ function relTime(ts) {
 }
 
 const KNOWN_EMAIL_DOMAINS = new Set([
-  "gmail.com", "googlemail.com",
-  "yahoo.com", "yahoo.de", "yahoo.co.uk", "yahoo.fr", "yahoo.at",
-  "hotmail.com", "hotmail.de", "hotmail.co.uk", "hotmail.fr",
-  "outlook.com", "outlook.de",
-  "live.com", "live.de",
-  "web.de", "gmx.de", "gmx.net", "gmx.com", "gmx.at", "gmx.ch",
-  "t-online.de", "freenet.de", "arcor.de",
-  "posteo.de", "posteo.net",
-  "protonmail.com", "proton.me", "pm.me",
-  "tutanota.com", "tuta.com",
-  "icloud.com", "me.com", "mac.com",
-  "aol.com", "mail.com", "hey.com",
-  "fastmail.com", "fastmail.fm",
+  "gmail.com",
+  "googlemail.com",
+  "yahoo.com",
+  "yahoo.de",
+  "yahoo.co.uk",
+  "yahoo.fr",
+  "yahoo.at",
+  "hotmail.com",
+  "hotmail.de",
+  "hotmail.co.uk",
+  "hotmail.fr",
+  "outlook.com",
+  "outlook.de",
+  "live.com",
+  "live.de",
+  "web.de",
+  "gmx.de",
+  "gmx.net",
+  "gmx.com",
+  "gmx.at",
+  "gmx.ch",
+  "t-online.de",
+  "freenet.de",
+  "arcor.de",
+  "posteo.de",
+  "posteo.net",
+  "protonmail.com",
+  "proton.me",
+  "pm.me",
+  "tutanota.com",
+  "tuta.com",
+  "icloud.com",
+  "me.com",
+  "mac.com",
+  "aol.com",
+  "mail.com",
+  "hey.com",
+  "fastmail.com",
+  "fastmail.fm",
 ]);
 
 function emailWarning(email) {
-  const domain = String(email || "").split("@")[1]?.toLowerCase() || "";
+  const domain =
+    String(email || "")
+      .split("@")[1]
+      ?.toLowerCase() || "";
   if (domain === "mailbox.org") return "mailbox";
   if (!KNOWN_EMAIL_DOMAINS.has(domain)) return "custom";
   return null;
@@ -566,11 +595,11 @@ export default function App() {
 
               <p className="lead">
                 in diesem Brief melden wir uns als aktive Mitglieder der Linken
-                – mit und ohne Funktion – zu Wort. Wir wollen uns konstruktiv in
+                - mit und ohne Funktion - zu Wort. Wir wollen uns konstruktiv in
                 die Debatte um den Gehaltsdeckel für Mandatsträger*innen
-                einbringen, die in den vergangenen Wochen von Abgeordneten teils
-                unschön über die Medien geführt wurde. Denn es ist uns wichtig,
-                dass unsere Perspektive gehört wird.
+                einbringen, die in den vergangenen Wochen teils unschön über die
+                Medien geführt wurde. Denn es ist uns wichtig, dass unsere
+                Perspektive gehört wird.
               </p>
 
               <p>
@@ -598,26 +627,28 @@ export default function App() {
               </p>
 
               <div className="pullquote">
-                „Die Linke wurde von uns allen gerettet."
+                „Die Linke wurde von uns allen gerettet, und zwar neben Beruf,
+                Familie oder Studium und ohne jegliche öffentliche
+                Aufmerksamkeit."
               </div>
 
               <p>
                 Wir erwarten, dass Mandate in der Linken anders verstanden
                 werden als in anderen Parteien: als politische Verantwortung
-                gegenüber der Partei und den Menschen, die sie tragen. Und nicht
-                als persönliche Karrieremöglichkeit. Wenn wir sagen, dass wir
-                als Linke Politik anders machen wollen, dann muss sich dieser
-                Anspruch auch in unserer politischen Praxis widerspiegeln.
-                Gerade in unserer Partei, die beinahe daran zerbrochen wäre,
-                dass einzelne Funktionär*innen sie für persönliche Interessen
-                missbraucht haben, ist die Debatte über die Rolle und
-                Verantwortung von Abgeordneten selbstverständlich. Denn
-                Mandatsträger*innen sind Aushängeschilder unserer Politik. An
-                ihrem Auftreten wird Die Linke insgesamt gemessen. Wenn unsere
-                Mandatsträger*innen ihre Diäten wirksam begrenzen, dann stärkt
-                das die Glaubwürdigkeit unserer Partei. Ein wirksamer
-                Gehaltsdeckel ist es für uns nur, wenn wir uns an den
-                Durchschnittslöhnen in diesem Land orientieren.
+                gegenüber der Partei und den Menschen, die sie tragen. Wenn wir
+                sagen, dass wir als Linke Politik anders machen wollen, dann
+                muss sich dieser Anspruch auch in unserer politischen Praxis
+                widerspiegeln. Gerade in unserer Partei, die beinahe daran
+                zerbrochen wäre, dass einzelne Funktionär*innen sie für
+                persönliche Interessen missbraucht haben, ist die Debatte über
+                die Rolle und Verantwortung von Abgeordneten selbstverständlich.
+                Denn Mandatsträger*innen sind Aushängeschilder unserer Politik.
+                An ihrem Auftreten wird Die Linke insgesamt gemessen. Wenn
+                unsere Mandatsträger*innen ihre Diäten wirksam begrenzen und
+                Geld zugunsten von Sozialfonds und sozialen Initiativen
+                umverteilen, dann stärkt das die Glaubwürdigkeit unserer Partei.
+                Ein wirksamer Gehaltsdeckel ist es für uns nur, wenn wir uns an
+                den Durchschnittslöhnen in diesem Land orientieren.
               </p>
 
               <p>
@@ -625,16 +656,20 @@ export default function App() {
                 Schritt. Wir wollen die Linke weiter aufbauen, Menschen
                 organisieren und so eine nachhaltige sozialistische Politik
                 schaffen. In den letzten Monaten haben wir erlebt, zu was wir in
-                der Lage sind, wenn wir uns fokussieren und gemeinsam an einem
-                Strang ziehen. Genau diesen Weg wollen wir fortsetzen, denn wir
-                haben viel zu tun und die Herausforderungen sind groß. Wir
-                werden auf dem Parteitag Personalentscheidungen maßgeblich davon
-                abhängig machen, wer sich produktiv an dieser Debatte beteiligt.
-                Denn die Aufgaben, vor denen wir stehen, gehen weit über einen
-                Gehaltsdeckel hinaus. Unsere gemeinsame Aufgabe ist schließlich,
-                Die Linke weiter aufzubauen. Das Comeback zur Bundestagswahl
-                müssen wir in nachhaltige und glaubwürdige sozialistische
-                Politik überführen.
+                der Lage sind, wenn wir an einem Strang ziehen. Genau diesen Weg
+                wollen wir fortsetzen, denn wir haben viel zu tun und die
+                Herausforderungen sind groß.
+              </p>
+
+              <p>
+                Wir erwarten von allen, auch denen, die gegen einen
+                Gehaltsdeckel sind, dass sie sich solidarisch und an den
+                vorgesehenen Orten in diese Debatte einbringen. Auf Augenhöhe
+                und innerhalb der Partei, statt über Medien. Denn die Aufgaben,
+                vor denen wir stehen, gehen weit über einen Gehaltsdeckel
+                hinaus. Unsere gemeinsame Aufgabe ist schließlich, Die Linke
+                weiter aufzubauen. Das Comeback zur Bundestagswahl müssen wir in
+                nachhaltige und glaubwürdige sozialistische Politik überführen.
               </p>
 
               <p className="gruss">Mit solidarischen Grüßen</p>
@@ -672,10 +707,6 @@ export default function App() {
                   <br />
                   Namen <span className="rot">drunter.</span>
                 </h2>
-                <p className="lead">
-                  Wir sind die Partei. Wenn unsere Abgeordneten nicht von selbst
-                  handeln, müssen wir sie erinnern.
-                </p>
                 <ul>
                   <li>
                     Du bist Mitglied oder Sympathisant:in der Partei Die Linke.
@@ -904,12 +935,16 @@ export default function App() {
               <div className="email-pill">{emailModal.email}</div>
               {emailWarning(emailModal.email) === "mailbox" && (
                 <div className="mail-warning">
-                  <strong>Achtung:</strong> mailbox.org blockiert leider Bestätigungs-E-Mails von unserer Domain. Bitte verwende eine andere E-Mail-Adresse (z.B. Gmail, GMX oder Posteo).
+                  <strong>Achtung:</strong> mailbox.org blockiert leider
+                  Bestätigungs-E-Mails von unserer Domain. Bitte verwende eine
+                  andere E-Mail-Adresse (z.B. Gmail, GMX oder Posteo).
                 </div>
               )}
               {emailWarning(emailModal.email) === "custom" && (
                 <div className="mail-warning mail-warning--soft">
-                  <strong>Hinweis:</strong> Bei privaten oder Organisations-Domains kann die Zustellung verzögert sein oder im Spam landen.
+                  <strong>Hinweis:</strong> Bei privaten oder
+                  Organisations-Domains kann die Zustellung verzögert sein oder
+                  im Spam landen.
                 </div>
               )}
               <p>
