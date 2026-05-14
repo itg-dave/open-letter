@@ -50,8 +50,6 @@ services:
   haraka:
     build:
       context: ./haraka
-    volumes:
-      - ./haraka/config/dkim:/haraka/config/dkim:ro
     restart: unless-stopped
     healthcheck:
       test:
