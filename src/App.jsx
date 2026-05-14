@@ -581,7 +581,7 @@ export default function App() {
                   <li>
                     Du bist Mitglied oder Sympathisant:in der Partei Die Linke.
                   </li>
-                  <li>du stehst hinter diesem Brief.</li>
+                  <li>Du stehst hinter diesem Brief.</li>
                   <li>
                     Du kannst wählen, ob dein Name öffentlich angezeigt wird.
                   </li>
