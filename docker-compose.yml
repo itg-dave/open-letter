@@ -7,13 +7,12 @@ services:
       - BASE_URL=${BASE_URL:-https://gehaltsdeckel.jetzt}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://gehaltsdeckel.jetzt,https://gehaltsdeckel-jetzt.de}
       - NODE_ENV=production
-      - SMTP_HOST=haraka
+      - SMTP_HOST=smtp.gmail.com
       - SMTP_PORT=587
+      - SMTP_USER=${GMAIL_USER}
+      - SMTP_PASS=${GMAIL_APP_PASSWORD}
     depends_on:
       db:
-        condition: service_healthy
-        required: false
-      haraka:
         condition: service_healthy
         required: false
     restart: unless-stopped
@@ -47,23 +46,5 @@ services:
       retries: 5
     restart: unless-stopped
 
-  haraka:
-    build:
-      context: ./haraka
-    volumes:
-      - haraka-dkim:/haraka/config/dkim
-    restart: unless-stopped
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          'node -e "const s=require(''net'').createServer();s.listen(587,''127.0.0.1'',()=>{s.close();process.exit(1)});s.on(''error'',e=>process.exit(e.code===''EADDRINUSE''?0:1))"',
-        ]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
-
 volumes:
   pgdata:
-  haraka-dkim:

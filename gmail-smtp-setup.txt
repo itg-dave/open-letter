@@ -1,0 +1,79 @@
+Gmail SMTP Setup — gehaltsdeckel.jetzt
+========================================
+
+GOAL: Use Gmail as SMTP relay, sending FROM noreply@gehaltsdeckel.jetzt
+      without the "via gmail.com" annotation in recipients' email clients.
+
+
+STEP 1 — Create a Gmail App Password
+--------------------------------------
+1. Go to the Gmail account you want to send from (e.g. yourname@gmail.com)
+2. Enable 2-Step Verification if not already on:
+   https://myaccount.google.com/security
+3. Go to App Passwords:
+   https://myaccount.google.com/apppasswords
+4. Create a new App Password → name it "gehaltsdeckel-smtp"
+5. Copy the 16-character password (format: xxxx xxxx xxxx xxxx)
+
+
+STEP 2 — Add credentials to .env
+-----------------------------------
+Add these two lines to your .env file on the server:
+
+  GMAIL_USER=yourname@gmail.com
+  GMAIL_APP_PASSWORD=xxxx xxxx xxxx xxxx
+
+
+STEP 3 — Remove "via gmail.com" annotation (optional but recommended)
+------------------------------------------------------------------------
+This step makes Gmail send natively as noreply@gehaltsdeckel.jetzt.
+
+3a. noreply@gehaltsdeckel.jetzt must be able to receive email.
+    Set up a mailbox or forward for that address at your DNS/mail provider.
+
+3b. In Gmail:
+    Settings (gear) → See all settings → Accounts and Import
+    → "Send mail as" section → Add another email address
+
+3c. Enter:
+    Name: Gehaltsdeckel Initiative
+    Email: noreply@gehaltsdeckel.jetzt
+    Uncheck "Treat as an alias"
+
+3d. Gmail will send a confirmation code to noreply@gehaltsdeckel.jetzt.
+    Retrieve it and enter it in Gmail to complete verification.
+
+3e. Set noreply@gehaltsdeckel.jetzt as default sender in Gmail settings
+    if desired.
+
+
+STEP 4 — Deploy
+-----------------
+On the server, redeploy with:
+
+  docker compose pull
+  docker compose up -d --build
+
+Haraka has been removed. The app now connects directly to smtp.gmail.com:587.
+
+
+STEP 5 — Verify
+-----------------
+Watch app logs for nodemailer errors:
+
+  docker compose logs -f app
+
+A successful send looks like:
+  nodemailer: message sent, messageId: <...@gmail.com>
+
+If you see "Invalid login" → check GMAIL_USER and GMAIL_APP_PASSWORD in .env
+If you see "Username and Password not accepted" → ensure 2-Step Verification
+  is enabled and you are using an App Password (not your regular password)
+
+
+NOTES
+------
+- Gmail free tier limit: 500 emails/day (Google Workspace: 2000/day)
+- Attachment size limit: 25 MB per message
+- The Haraka container and config are still in the repo but no longer used.
+  They can be deleted once this is confirmed working.

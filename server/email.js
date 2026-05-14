@@ -1,11 +1,13 @@
 import nodemailer from "nodemailer";
 
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || "localhost",
+  host: process.env.SMTP_HOST || "smtp.gmail.com",
   port: parseInt(process.env.SMTP_PORT || "587", 10),
   secure: false,
-  // No auth needed — relay is permitted by IP ACL inside Docker
-  tls: { rejectUnauthorized: false },
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
 });
 
 export async function sendVerificationEmail({ to, name, token, baseUrl }) {
