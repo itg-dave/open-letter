@@ -971,7 +971,7 @@ h1.headline .banner {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(100, 0, 30, 0.75);
+  background: rgba(0, 0, 0, 0.45);
   display: flex;
   align-items: center;
   justify-content: center;
