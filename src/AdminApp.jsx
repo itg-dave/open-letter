@@ -337,6 +337,8 @@ export default function AdminApp() {
   const [scheduleSubject, setScheduleSubject] = useState("");
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedTime, setSelectedTime] = useState("10:00");
+  const [testEmail, setTestEmail] = useState("");
+  const [testStatus, setTestStatus] = useState(null);
   const [dateInput, setDateInput] = useState(() =>
     format(new Date(), "dd.MM.yyyy"),
   );
@@ -496,6 +498,27 @@ export default function AdminApp() {
       }),
     });
     if (res.ok) loadAll();
+  }
+
+  async function sendTest(e) {
+    e.preventDefault();
+    if (!scheduleTemplate || !testEmail) return;
+    setTestStatus("sending");
+    const res = await api("/api/admin/test-send", {
+      method: "POST",
+      body: JSON.stringify({
+        template_id: scheduleTemplate,
+        subject: scheduleSubject,
+        to: testEmail,
+      }),
+    });
+    if (res.ok) {
+      setTestStatus("ok");
+      setTimeout(() => setTestStatus(null), 4000);
+    } else {
+      const data = await res.json().catch(() => ({}));
+      setTestStatus(data.error || "Fehler beim Senden");
+    }
   }
 
   async function cancel(id) {
@@ -707,6 +730,40 @@ export default function AdminApp() {
                   {stats.subscriberCount.toLocaleString("de-DE")}
                 </p>
               )}
+
+              <div className="admin-test-send">
+                <div className="field">
+                  <label>Testversand an</label>
+                  <input
+                    type="email"
+                    value={testEmail}
+                    onChange={(e) => setTestEmail(e.target.value)}
+                    placeholder="test@beispiel.de"
+                  />
+                </div>
+                <button
+                  className="cta cta--outline"
+                  type="button"
+                  onClick={sendTest}
+                  disabled={!testEmail || testStatus === "sending"}
+                >
+                  {testStatus === "sending"
+                    ? "Wird gesendet\u2026"
+                    : "Test senden"}
+                </button>
+                {testStatus === "ok" && (
+                  <p className="admin-test-feedback admin-test-ok">
+                    E-Mail gesendet
+                  </p>
+                )}
+                {testStatus &&
+                  testStatus !== "ok" &&
+                  testStatus !== "sending" && (
+                    <p className="admin-test-feedback admin-test-error">
+                      {testStatus}
+                    </p>
+                  )}
+              </div>
             </form>
 
             <div className="admin-card campaign-list">

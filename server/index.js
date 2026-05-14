@@ -704,6 +704,42 @@ const server = Bun.serve({
         });
       },
     },
+
+    "/api/admin/test-send": {
+      async POST(req) {
+        return adminJson(req, async () => {
+          const body = await req.json();
+          const to = String(body.to || "").trim();
+          const templateId = parseInt(body.template_id, 10);
+          if (!to || !to.includes("@")) {
+            return json({ error: "Ungültige E-Mail-Adresse" }, 400);
+          }
+          if (!templateId) {
+            return json({ error: "Keine Vorlage ausgewählt" }, 400);
+          }
+          const template = await getEmailTemplate(templateId);
+          if (!template) {
+            return json({ error: "Vorlage nicht gefunden" }, 404);
+          }
+          const stats = await getNewsletterStats();
+          const signerCount = stats.signerCount?.toLocaleString("de-DE") || "0";
+          const vars = {
+            name: "Test-Empfänger",
+            signerCount,
+            unsubscribeUrl: `${BASE_URL}/abmelden/test`,
+            confirmUrl: `${BASE_URL}/api/confirm/test`,
+            deleteUrl: `${BASE_URL}/api/delete/test`,
+          };
+          const html = renderEmailHtml(template.html_body, vars);
+          const subject = interpolateTemplate(
+            String(body.subject || template.subject || ""),
+            vars,
+          );
+          await sendRenderedEmail({ to, subject: `[TEST] ${subject}`, html });
+          return json({ ok: true });
+        });
+      },
+    },
   },
 
   fetch(req) {

@@ -2072,6 +2072,38 @@ footer {
   background: var(--rot);
 }
 
+.admin-test-send {
+  display: grid;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--grau-hell);
+}
+
+.cta--outline {
+  background: transparent;
+  border: 2px solid var(--akzent);
+  color: var(--akzent);
+}
+.cta--outline:hover:not(:disabled) {
+  background: var(--akzent);
+  color: var(--weiss);
+}
+.cta--outline:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.admin-test-feedback {
+  font-size: 13px;
+  margin: 0;
+}
+.admin-test-ok {
+  color: var(--erfolg);
+}
+.admin-test-error {
+  color: var(--fehler);
+}
+
 .campaign-list {
   display: grid;
   gap: 12px;
