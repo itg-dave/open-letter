@@ -6,3 +6,6 @@ dist
 design-extract
 .claude
 bun.lock
+
+# DKIM private keys — never commit these
+haraka/config/dkim/*/private
