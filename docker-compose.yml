@@ -1,8 +1,6 @@
 services:
   app:
     build: .
-    ports:
-      - "${PORT:-3000}:3000"
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - PORT=3000
@@ -52,13 +50,11 @@ services:
   haraka:
     build:
       context: ./haraka
-    ports:
-      - "25:25"
     volumes:
       - ./haraka/config/dkim:/haraka/config/dkim:ro
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 25 || exit 1"]
+      test: ["CMD-SHELL", "node -e \"require('net').createConnection(587,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))\""]
       interval: 30s
       timeout: 5s
       retries: 3
