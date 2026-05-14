@@ -8,6 +8,7 @@ import {
   insertSigner,
   confirmSigner,
   refreshVerificationToken,
+  getVerifiedSignerName,
   createDeletionToken,
   deleteSigner,
   healthCheck,
@@ -35,6 +36,7 @@ import {
   sendRenderedEmail,
   renderEmailHtml,
   interpolateTemplate,
+  sendAlreadySignedEmail,
 } from "./email.js";
 import { checkRateLimit } from "./ratelimit.js";
 
@@ -377,6 +379,10 @@ const server = Bun.serve({
           });
 
           if (!ok && alreadyVerified) {
+            const verifiedName = await getVerifiedSignerName(email);
+            if (verifiedName) {
+              await sendAlreadySignedEmail({ to: email, name: verifiedName });
+            }
             return json({ ok: true });
           }
 

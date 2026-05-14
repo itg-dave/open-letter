@@ -25,6 +25,15 @@ const fallbackTemplates = {
       <p>Mit solidarischen Grüßen<br>Initiative Gehaltsdeckel</p>
     `,
   },
+  already_signed: {
+    subject: "Du hast bereits unterschrieben — Gehaltsdeckel jetzt",
+    html_body: `
+      <p>Hallo {{name}},</p>
+      <p>deine Unterschrift unter den offenen Brief „Gehaltsdeckel jetzt" ist bereits bestätigt und wird gezählt.</p>
+      <p>Du musst nichts weiter tun – danke für deine Solidarität!</p>
+      <p>Mit solidarischen Grüßen<br>Initiative Gehaltsdeckel</p>
+    `,
+  },
   deletion: {
     subject: "Deine Unterschrift löschen — Gehaltsdeckel jetzt",
     html_body: `
@@ -108,6 +117,17 @@ export async function sendDeletionEmail({ to, token, baseUrl }) {
   console.log(`[email] deletion request to=${to}`);
   const deleteUrl = `${baseUrl}/api/delete/${token}`;
   const rendered = await renderTemplateBySlug("deletion", { deleteUrl });
+
+  await sendRenderedEmail({
+    to,
+    subject: rendered.subject,
+    html: rendered.html,
+  });
+}
+
+export async function sendAlreadySignedEmail({ to, name }) {
+  console.log(`[email] already-signed notification to=${to} name="${name}"`);
+  const rendered = await renderTemplateBySlug("already_signed", { name });
 
   await sendRenderedEmail({
     to,

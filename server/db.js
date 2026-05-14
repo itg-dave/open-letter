@@ -108,6 +108,13 @@ export async function insertSigner({
   return { ok: true, alreadyVerified: result[0].verified };
 }
 
+export async function getVerifiedSignerName(email) {
+  const result = await sql`
+    SELECT name FROM signers WHERE email = ${email} AND verified = TRUE
+  `;
+  return result.length > 0 ? result[0].name : null;
+}
+
 export async function refreshVerificationToken(email, token, expiresAt) {
   const result = await sql`
     UPDATE signers
