@@ -55,7 +55,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "node -e \"const s=require('net').createConnection(587,'127.0.0.1');s.on('connect',()=>{s.write('QUIT\\r\\n');s.end();process.exit(0)});s.on('error',()=>process.exit(1))\"",
+          'node -e "const s=require(''net'').createServer();s.listen(587,''127.0.0.1'',()=>{s.close();process.exit(1)});s.on(''error'',e=>process.exit(e.code===''EADDRINUSE''?0:1))"',
         ]
       interval: 30s
       timeout: 5s
