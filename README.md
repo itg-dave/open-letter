@@ -8,7 +8,7 @@ Campaign landing page for an open letter by the base of Die Linke demanding caps
 - **Frontend**: React 18, vanilla CSS
 - **Backend**: `Bun.serve()` with route handlers
 - **Database**: PostgreSQL 18 via [postgres.js](https://github.com/porsager/postgres)
-- **Email**: nodemailer via mailbox.org SMTP — console log in dev, live delivery in production
+- **Email**: nodemailer via authenticated mailbox.org SMTP
 
 ## Project Structure
 
@@ -30,7 +30,7 @@ diaetendeckel/
 ├── server/
 │   ├── index.js               # Bun.serve() — routes + security headers
 │   ├── db.js                  # Parameterized Postgres queries
-│   ├── email.js               # Email abstraction (console / Resend)
+│   ├── email.js               # Email templates + SMTP transport
 │   └── ratelimit.js           # In-memory sliding window rate limiter
 └── src/
     ├── main.jsx               # React entry point
@@ -147,9 +147,9 @@ Schema creation is idempotent (`IF NOT EXISTS`) — safe to run on every contain
 
 ## Email
 
-**Default (dev):** Verification URLs are logged to the console. Click the URL to confirm a signature.
+**Dev/demo:** Set `MAILBOX_USER` and `MAILBOX_PASSWORD` to test real email delivery via mailbox.org. Without SMTP credentials, development starts but email submission will fail when a route tries to send mail.
 
-**Production:** Set `MAILBOX_USER` and `MAILBOX_PASSWORD` in `.env`. The app sends via `smtp.mailbox.org:587` (STARTTLS) using nodemailer. See `gmail-smtp-setup.txt` for the full DNS setup (SPF, DKIM, DMARC) required to send from `noreply@gehaltsdeckel.jetzt`.
+**Production:** `MAILBOX_USER` and `MAILBOX_PASSWORD` are required. The app sends directly via `smtp.mailbox.org:587` (STARTTLS) using nodemailer; Haraka is not part of the production mail path. See `mailbox-smtp-setup.txt` for the mailbox.org sender alias and DNS setup (SPF, DKIM, DMARC) required to send from `noreply@gehaltsdeckel.jetzt`.
 
 ## Security
 
@@ -171,7 +171,8 @@ Set in Dokploy UI or `.env`:
 
 - `DB_PASSWORD` — strong random password
 - `BASE_URL` — public URL (e.g. `https://diaetendeckel.example.de`)
-- `RESEND_API_KEY` — (optional) for real email delivery
+- `MAILBOX_USER` — mailbox.org account address used for SMTP auth
+- `MAILBOX_PASSWORD` — mailbox.org account password
 
 ### Production with external Postgres
 

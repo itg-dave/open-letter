@@ -10,11 +10,11 @@ services:
       - ADMIN_PATH=${ADMIN_PATH}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - ADMIN_JWT_SECRET=${ADMIN_JWT_SECRET}
-      - SMTP_HOST=haraka
+      - SMTP_HOST=smtp.mailbox.org
       - SMTP_PORT=587
+      - SMTP_USER=${MAILBOX_USER}
+      - SMTP_PASS=${MAILBOX_PASSWORD}
     depends_on:
-      haraka:
-        condition: service_started
       db:
         condition: service_healthy
         required: false
@@ -31,11 +31,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-
-  haraka:
-    build: ./haraka
-    restart: unless-stopped
-
   db:
     image: postgres:18-alpine
     profiles:

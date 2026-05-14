@@ -2,13 +2,31 @@ import nodemailer from "nodemailer";
 import juice from "juice";
 import { getEmailTemplateBySlug, getNewsletterStats } from "./db.js";
 
+const smtpHost = process.env.SMTP_HOST || "smtp.mailbox.org";
+const smtpPort = parseInt(process.env.SMTP_PORT || "587", 10);
+const smtpUser = process.env.SMTP_USER || "";
+const smtpPass = process.env.SMTP_PASS || "";
+const hasSmtpAuth = Boolean(smtpUser);
+
+if (!Number.isInteger(smtpPort)) {
+  throw new Error(`Invalid SMTP_PORT: ${process.env.SMTP_PORT}`);
+}
+
+if (smtpUser && !smtpPass) {
+  throw new Error("SMTP_PASS must be set when SMTP_USER is set");
+}
+
+if (process.env.NODE_ENV === "production" && (!smtpUser || !smtpPass)) {
+  throw new Error("Production email requires SMTP_USER and SMTP_PASS");
+}
+
+const transportSummary = `${smtpHost}:${smtpPort} auth=${hasSmtpAuth ? "yes" : "no"}`;
+
 export const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || "smtp.gmail.com",
-  port: parseInt(process.env.SMTP_PORT || "587", 10),
+  host: smtpHost,
+  port: smtpPort,
   secure: false,
-  ...(process.env.SMTP_USER
-    ? { auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } }
-    : {}),
+  ...(hasSmtpAuth ? { auth: { user: smtpUser, pass: smtpPass } } : {}),
 });
 
 const from = '"Gehaltsdeckel Initiative" <noreply@gehaltsdeckel.jetzt>';
@@ -100,8 +118,15 @@ export function htmlToText(html) {
     .trim();
 }
 
+function getEmailDomain(email) {
+  return String(email || "").split("@").pop() || "unknown";
+}
+
 export async function sendRenderedEmail({ to, subject, html }) {
-  console.log(`[email] sending to=${to} subject="${subject}"`);
+  const toDomain = getEmailDomain(to);
+  console.log(
+    `[email] sending via=${transportSummary} toDomain=${toDomain} subject="${subject}"`,
+  );
   const info = await transporter.sendMail({
     from,
     to,
@@ -109,11 +134,13 @@ export async function sendRenderedEmail({ to, subject, html }) {
     html,
     text: htmlToText(html),
   });
-  console.log(`[email] sent to=${to} messageId=${info.messageId}`);
+  console.log(
+    `[email] sent via=${transportSummary} toDomain=${toDomain} messageId=${info.messageId} response="${info.response || ""}"`,
+  );
 }
 
 export async function sendDeletionEmail({ to, token, baseUrl }) {
-  console.log(`[email] deletion request to=${to}`);
+  console.log(`[email] deletion request toDomain=${getEmailDomain(to)}`);
   const deleteUrl = `${baseUrl}/api/delete/${token}`;
   const rendered = await renderTemplateBySlug("deletion", { deleteUrl });
 
@@ -125,7 +152,9 @@ export async function sendDeletionEmail({ to, token, baseUrl }) {
 }
 
 export async function sendAlreadySignedEmail({ to, name }) {
-  console.log(`[email] already-signed notification to=${to} name="${name}"`);
+  console.log(
+    `[email] already-signed notification toDomain=${getEmailDomain(to)}`,
+  );
   const rendered = await renderTemplateBySlug("already_signed", { name });
 
   await sendRenderedEmail({
@@ -136,7 +165,7 @@ export async function sendAlreadySignedEmail({ to, name }) {
 }
 
 export async function sendVerificationEmail({ to, name, token, baseUrl }) {
-  console.log(`[email] verification to=${to} name="${name}"`);
+  console.log(`[email] verification toDomain=${getEmailDomain(to)}`);
   const confirmUrl = `${baseUrl}/api/confirm/${token}`;
   const rendered = await renderTemplateBySlug("verification", {
     name,

@@ -86,8 +86,8 @@ STEP 4 — Verify DNS records (macOS / Linux)
   # SPF
   dig gehaltsdeckel.jetzt TXT | grep spf
 
-  # DKIM (check one of the four — all should resolve)
-  dig MBO0001._domainkey.gehaltsdeckel.jetzt TXT
+  # DKIM (check one of the four CNAMEs — all should resolve)
+  dig MBO0001._domainkey.gehaltsdeckel.jetzt CNAME
 
   # DMARC
   dig _dmarc.gehaltsdeckel.jetzt TXT
@@ -102,26 +102,36 @@ On the server:
 
   docker compose up -d --build
 
-Haraka has been removed. The app now connects directly to smtp.gmail.com:587.
+Haraka is not part of the production mail path. The app connects directly to
+smtp.mailbox.org:587 with MAILBOX_USER and MAILBOX_PASSWORD.
 
 
-STEP 5 — Verify
+STEP 6 — Verify
 -----------------
 Watch app logs for nodemailer errors:
 
   docker compose logs -f app
 
 A successful send looks like:
-  nodemailer: message sent, messageId: <...@gmail.com>
+  [email] sent via=smtp.mailbox.org:587 auth=yes toDomain=example.org messageId=<...> response="250 ..."
 
-If you see "Invalid login" → check GMAIL_USER and GMAIL_APP_PASSWORD in .env
-If you see "Username and Password not accepted" → ensure 2-Step Verification
-  is enabled and you are using an App Password (not your regular password)
+If the app exits with "Production email requires SMTP_USER and SMTP_PASS",
+check MAILBOX_USER and MAILBOX_PASSWORD in .env or your deployment settings.
+
+If smtp.mailbox.org rejects authentication, confirm that MAILBOX_USER is the
+full mailbox.org account address and MAILBOX_PASSWORD is the matching account
+password.
+
+If a mailbox.org-hosted recipient later rejects or delays delivery, collect the
+bounce SMTP status and diagnostic text. Do not reintroduce Haraka for that case;
+first verify the sender alias, SPF, DKIM, and DMARC alignment above.
 
 
 NOTES
-------
-- Gmail free tier limit: 500 emails/day (Google Workspace: 2000/day)
-- Attachment size limit: 25 MB per message
-- The Haraka container and config are still in the repo but no longer used.
-  They can be deleted once this is confirmed working.
+-----
+- mailbox.org handles outbound DKIM signing when the sender alias and DKIM
+  CNAME records are configured correctly.
+- Cloudflare Email Routing remains inbound-only and is independent of this
+  outbound SMTP setup.
+- The Haraka files in this repo are legacy fallback material only. They are not
+  used by docker-compose.yml.
