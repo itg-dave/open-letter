@@ -2026,37 +2026,41 @@ footer {
   padding-block: 6px;
 }
 
-/* Day button base */
-.rdp-day_button {
+/* Day button base — explicit overrides beat library defaults */
+.rdp-root .rdp-day_button {
+  border-radius: 0;
+  border: 1.5px solid transparent;
   font-size: 13px;
   font-weight: 500;
   transition:
     background 0.1s ease,
     color 0.1s ease;
 }
-.rdp-day_button:hover:not(:disabled) {
+.rdp-root .rdp-day_button:hover:not(:disabled) {
   background-color: color-mix(in srgb, var(--akzent) 10%, var(--weiss));
   border-color: color-mix(in srgb, var(--akzent) 40%, transparent);
 }
 
 /* Selected day */
-.rdp-selected .rdp-day_button {
+.rdp-root .rdp-selected .rdp-day_button {
   background-color: var(--akzent);
   color: var(--weiss);
   border-color: transparent;
   font-weight: 700;
 }
-.rdp-selected .rdp-day_button:hover {
+.rdp-root .rdp-selected .rdp-day_button:hover {
   background-color: color-mix(in srgb, var(--akzent) 85%, var(--weiss));
 }
 
 /* Today (not selected) */
-.rdp-today:not(.rdp-outside):not(.rdp-selected) .rdp-day_button {
+.rdp-root .rdp-today:not(.rdp-outside):not(.rdp-selected) .rdp-day_button {
   color: var(--rot);
   font-weight: 700;
   position: relative;
 }
-.rdp-today:not(.rdp-outside):not(.rdp-selected) .rdp-day_button::after {
+.rdp-root
+  .rdp-today:not(.rdp-outside):not(.rdp-selected)
+  .rdp-day_button::after {
   content: "";
   position: absolute;
   bottom: 1px;

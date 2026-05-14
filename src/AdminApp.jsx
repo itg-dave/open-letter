@@ -379,14 +379,12 @@ export default function AdminApp() {
       const data = await templateRes.json();
       setTemplates(data);
       setSelectedId((current) => current || data[0]?.id || null);
-      if (!scheduleTemplate && data[0]) {
-        setScheduleTemplate(String(data[0].id));
-        setScheduleSubject(data[0].subject);
-      }
+      setScheduleTemplate((t) => t || (data[0] ? String(data[0].id) : ""));
+      setScheduleSubject((s) => s || (data[0] ? data[0].subject : ""));
     }
     if (campaignRes.ok) setCampaigns(await campaignRes.json());
     if (statsRes.ok) setStats(await statsRes.json());
-  }, [api, token, scheduleTemplate]);
+  }, [api, token]);
 
   useEffect(() => {
     loadAll();
@@ -411,10 +409,31 @@ export default function AdminApp() {
       setLoginError("Anmeldung fehlgeschlagen.");
       return;
     }
-    const data = await res.json();
-    sessionStorage.setItem(TOKEN_KEY, data.token);
-    setToken(data.token);
+    const { token: newToken } = await res.json();
+    sessionStorage.setItem(TOKEN_KEY, newToken);
+    setToken(newToken);
     setPassword("");
+    // Bootstrap data immediately with the fresh token — don't wait for the hook chain
+    const h = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${newToken}`,
+    };
+    const [tRes, cRes, sRes] = await Promise.all([
+      fetch("/api/admin/templates", { headers: h }),
+      fetch("/api/admin/campaigns", { headers: h }),
+      fetch("/api/admin/stats", { headers: h }),
+    ]);
+    if (tRes.ok) {
+      const data = await tRes.json();
+      setTemplates(data);
+      setSelectedId(data[0]?.id || null);
+      if (data[0]) {
+        setScheduleTemplate(String(data[0].id));
+        setScheduleSubject(data[0].subject);
+      }
+    }
+    if (cRes.ok) setCampaigns(await cRes.json());
+    if (sRes.ok) setStats(await sRes.json());
   }
 
   async function createTemplate(e) {
