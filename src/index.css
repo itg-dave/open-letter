@@ -1929,17 +1929,143 @@ footer {
   align-items: start;
 }
 
-.admin-date-grid {
+.admin-picker-wrapper {
   display: grid;
-  gap: 18px;
-  grid-template-columns: minmax(0, 1fr) 150px;
-  align-items: start;
+  gap: 14px;
 }
 
+.admin-date-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+/* ---------- Calendar (react-day-picker v10) ---------- */
 .rdp-root {
-  --rdp-accent-color: var(--rot);
-  --rdp-background-color: var(--weiss);
+  --rdp-accent-color: var(--akzent);
+  --rdp-accent-background-color: color-mix(
+    in srgb,
+    var(--akzent) 10%,
+    var(--weiss)
+  );
+  --rdp-background-color: color-mix(in srgb, var(--akzent) 6%, var(--weiss));
+  --rdp-today-color: var(--rot);
+  --rdp-day-height: 36px;
+  --rdp-day-width: 36px;
+  --rdp-day_button-height: 32px;
+  --rdp-day_button-width: 32px;
+  --rdp-day_button-border-radius: 0;
+  --rdp-day_button-border: 1.5px solid transparent;
+  --rdp-selected-border: none;
+  --rdp-nav_button-width: 30px;
+  --rdp-nav_button-height: 30px;
+  --rdp-nav-height: 40px;
+  --rdp-weekday-opacity: 1;
+  --rdp-outside-opacity: 0.35;
   margin: 0;
+  font-family: Inter, sans-serif;
+  font-size: 13px;
+  color: var(--akzent);
+}
+
+/* Fill available width */
+.rdp-months {
+  max-width: 100%;
+}
+.rdp-month {
+  width: 100%;
+}
+.rdp-month_grid {
+  width: 100%;
+  border-collapse: collapse;
+}
+.rdp-day {
+  width: auto;
+}
+
+/* Month heading */
+.rdp-month_caption {
+  font-family: "Work Sans", sans-serif;
+  font-weight: 900;
+  font-size: 14px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--akzent);
+  height: var(--rdp-nav-height);
+}
+
+/* Nav buttons */
+.rdp-button_previous,
+.rdp-button_next {
+  background: var(--fond);
+  border: 1.5px solid var(--akzent);
+  color: var(--akzent);
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.rdp-button_previous:hover:not(:disabled),
+.rdp-button_next:hover:not(:disabled) {
+  background: var(--akzent);
+}
+.rdp-button_previous:hover:not(:disabled) .rdp-chevron,
+.rdp-button_next:hover:not(:disabled) .rdp-chevron {
+  fill: var(--weiss);
+}
+.rdp-chevron {
+  fill: var(--akzent);
+}
+
+/* Weekday headers */
+.rdp-weekday {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--grau);
+  padding-block: 6px;
+}
+
+/* Day button base */
+.rdp-day_button {
+  font-size: 13px;
+  font-weight: 500;
+  transition:
+    background 0.1s ease,
+    color 0.1s ease;
+}
+.rdp-day_button:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--akzent) 10%, var(--weiss));
+  border-color: color-mix(in srgb, var(--akzent) 40%, transparent);
+}
+
+/* Selected day */
+.rdp-selected .rdp-day_button {
+  background-color: var(--akzent);
+  color: var(--weiss);
+  border-color: transparent;
+  font-weight: 700;
+}
+.rdp-selected .rdp-day_button:hover {
+  background-color: color-mix(in srgb, var(--akzent) 85%, var(--weiss));
+}
+
+/* Today (not selected) */
+.rdp-today:not(.rdp-outside):not(.rdp-selected) .rdp-day_button {
+  color: var(--rot);
+  font-weight: 700;
+  position: relative;
+}
+.rdp-today:not(.rdp-outside):not(.rdp-selected) .rdp-day_button::after {
+  content: "";
+  position: absolute;
+  bottom: 1px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--rot);
 }
 
 .campaign-list {
@@ -2073,7 +2199,7 @@ footer {
     gap: 12px;
   }
 
-  .admin-date-grid,
+  .admin-date-row,
   .campaign-row {
     grid-template-columns: 1fr;
   }
