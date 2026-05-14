@@ -64,7 +64,9 @@ const adminRoute = `/${ADMIN_PATH}`;
 const jwtSecret = new TextEncoder().encode(ADMIN_JWT_SECRET);
 
 function normalizeAdminPath(path) {
-  const value = String(path || "").trim().replace(/^\/+|\/+$/g, "");
+  const value = String(path || "")
+    .trim()
+    .replace(/^\/+|\/+$/g, "");
   if (!value || value.includes("/") || value.includes("?") || value === "api") {
     return "";
   }
@@ -264,6 +266,14 @@ const server = Bun.serve({
     "/": homepage,
     [adminRoute]: homepage,
     "/abmelden/:token": homepage,
+
+    "/api/config": {
+      GET() {
+        return json({
+          adminPathHash: process.env.PUBLIC_ADMIN_PATH_HASH || "",
+        });
+      },
+    },
 
     "/api/health": {
       async GET() {
@@ -509,11 +519,9 @@ const server = Bun.serve({
             15 * 60 * 1000,
           );
           if (!allowed) {
-            return json(
-              { error: "Zu viele Anmeldeversuche." },
-              429,
-              { "Retry-After": String(retryAfter) },
-            );
+            return json({ error: "Zu viele Anmeldeversuche." }, 429, {
+              "Retry-After": String(retryAfter),
+            });
           }
 
           const body = await req.json();
@@ -562,18 +570,24 @@ const server = Bun.serve({
           const body = await req.json();
           const subject = sanitize(body.subject, 240);
           const htmlBody = sanitizeHtml(body.html_body);
-          if (!subject || !htmlBody) return json({ error: "Missing fields" }, 400);
-          const template = await updateEmailTemplate(parseInt(req.params.id, 10), {
-            subject,
-            htmlBody,
-          });
+          if (!subject || !htmlBody)
+            return json({ error: "Missing fields" }, 400);
+          const template = await updateEmailTemplate(
+            parseInt(req.params.id, 10),
+            {
+              subject,
+              htmlBody,
+            },
+          );
           if (!template) return json({ error: "Not found" }, 404);
           return json(template);
         });
       },
       async DELETE(req) {
         return adminJson(req, async () => {
-          const deleted = await deleteEmailTemplate(parseInt(req.params.id, 10));
+          const deleted = await deleteEmailTemplate(
+            parseInt(req.params.id, 10),
+          );
           if (!deleted) return json({ error: "Cannot delete template" }, 400);
           return json({ ok: true });
         });

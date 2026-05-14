@@ -16,7 +16,11 @@ async function getRootComponent() {
   const parts = window.location.pathname.split("/").filter(Boolean);
   if (parts[0] === "abmelden" && parts[1]) return <UnsubscribeApp />;
 
-  const expectedHash = process.env.PUBLIC_ADMIN_PATH_HASH || "";
+  let expectedHash = "";
+  try {
+    const config = await fetch("/api/config").then((r) => r.json());
+    expectedHash = config.adminPathHash || "";
+  } catch (_) {}
   const currentHash = await sha256Hex(parts[0] || "");
   if (expectedHash && currentHash === expectedHash && parts.length === 1) {
     return <AdminApp />;
