@@ -89,6 +89,7 @@ function TemplateEditor({ token, template, onSaved, onDeleted }) {
   const [preview, setPreview] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [linkInput, setLinkInput] = useState(null);
 
   const editor = useEditor({
     extensions: [
@@ -134,14 +135,19 @@ function TemplateEditor({ token, template, onSaved, onDeleted }) {
   const setLink = useCallback(() => {
     if (!editor) return;
     const previous = editor.getAttributes("link").href || "";
-    const href = window.prompt("Link URL", previous);
-    if (href === null) return;
+    setLinkInput(previous);
+  }, [editor]);
+
+  const applyLink = useCallback(() => {
+    if (!editor || linkInput === null) return;
+    const href = linkInput.trim();
     if (!href) {
       editor.chain().focus().extendMarkRange("link").unsetLink().run();
-      return;
+    } else {
+      editor.chain().focus().extendMarkRange("link").setLink({ href }).run();
     }
-    editor.chain().focus().extendMarkRange("link").setLink({ href }).run();
-  }, [editor]);
+    setLinkInput(null);
+  }, [editor, linkInput]);
 
   async function save() {
     setSaving(true);
@@ -265,6 +271,24 @@ function TemplateEditor({ token, template, onSaved, onDeleted }) {
             ↷
           </ToolbarButton>
         </div>
+
+        {linkInput !== null && (
+          <div className="link-input-row">
+            <input
+              autoFocus
+              type="url"
+              placeholder="https://..."
+              value={linkInput}
+              onChange={(e) => setLinkInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") applyLink();
+                if (e.key === "Escape") setLinkInput(null);
+              }}
+            />
+            <button type="button" onClick={applyLink}>OK</button>
+            <button type="button" onClick={() => setLinkInput(null)}>✕</button>
+          </div>
+        )}
 
         <div className="admin-editor-surface">
           <EditorContent editor={editor} />

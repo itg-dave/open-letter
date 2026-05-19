@@ -5,6 +5,7 @@ import {
   getSigners,
   getStats,
   getNewsletterStats,
+  getOccupations,
   insertSigner,
   confirmSigner,
   refreshVerificationToken,
@@ -301,6 +302,18 @@ const server = Bun.serve({
       },
     },
 
+    "/api/occupations": {
+      async GET() {
+        try {
+          const occupations = await getOccupations();
+          return json(occupations);
+        } catch (err) {
+          console.error("GET /api/occupations error:", err);
+          return json({ error: "Internal server error" }, 500);
+        }
+      },
+    },
+
     "/api/signers": {
       async GET(req) {
         try {
@@ -340,6 +353,7 @@ const server = Bun.serve({
           const name = sanitize(body.name);
           const email = sanitizeEmail(body.email);
           const kv = sanitize(body.kv || "");
+          const occupation = sanitize(body.occupation || "");
           const newsletter = Boolean(body.newsletter);
           const showPublicly = body.agree === true;
 
@@ -363,6 +377,7 @@ const server = Bun.serve({
             name,
             email,
             kv,
+            occupation,
             newsletter,
             showPublicly,
             token,

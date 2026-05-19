@@ -189,6 +189,8 @@ export default function App() {
   const [showImpressum, setShowImpressum] = useState(false);
   const [showDatenschutz, setShowDatenschutz] = useState(false);
   const [showDeleted, setShowDeleted] = useState(false);
+  const [showOccupations, setShowOccupations] = useState(false);
+  const [occupationGroups, setOccupationGroups] = useState([]);
 
   const emailTrapRef = useFocusTrap(!!emailModal);
   const successTrapRef = useFocusTrap(showSuccess);
@@ -290,6 +292,16 @@ export default function App() {
     fetchSigners(filter, search, 0, false);
   }, [filter, search, fetchSigners]);
 
+  useEffect(() => {
+    if (!showOccupations) return;
+    (async () => {
+      try {
+        const res = await fetch("/api/occupations");
+        if (res.ok) setOccupationGroups(await res.json());
+      } catch {}
+    })();
+  }, [showOccupations]);
+
   function handleLoadMore() {
     const next = offset + 18;
     setOffset(next);
@@ -313,6 +325,7 @@ export default function App() {
         name: data.name,
         email: data.email,
         kv: data.kv || "",
+        occupation: data.occupation || "",
         newsletter: !!data.newsletter,
         agree: !!data.agree,
       });
@@ -782,32 +795,57 @@ export default function App() {
 
             <div className="filters">
               <button
-                className={"filter-chip " + (filter === "alle" ? "active" : "")}
-                onClick={() => setFilter("alle")}
+                className={
+                  "filter-chip " +
+                  (!showOccupations && filter === "alle" ? "active" : "")
+                }
+                onClick={() => {
+                  setShowOccupations(false);
+                  setFilter("alle");
+                }}
               >
                 Alle
               </button>
               <button
                 className={
-                  "filter-chip " + (filter === "heute" ? "active" : "")
+                  "filter-chip " +
+                  (!showOccupations && filter === "heute" ? "active" : "")
                 }
-                onClick={() => setFilter("heute")}
+                onClick={() => {
+                  setShowOccupations(false);
+                  setFilter("heute");
+                }}
               >
                 Heute
               </button>
               <button
-                className={"filter-chip " + (filter === "kv" ? "active" : "")}
-                onClick={() => setFilter("kv")}
+                className={
+                  "filter-chip " +
+                  (!showOccupations && filter === "kv" ? "active" : "")
+                }
+                onClick={() => {
+                  setShowOccupations(false);
+                  setFilter("kv");
+                }}
               >
                 Mit Kreisverband
               </button>
-              <input
-                className="search"
-                placeholder="Suchen nach Name oder Kreisverband…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                aria-label="Suche nach Name oder Kreisverband"
-              />
+              <button
+                className={"filter-chip " + (showOccupations ? "active" : "")}
+                onClick={() => setShowOccupations((v) => !v)}
+                aria-pressed={showOccupations}
+              >
+                Berufe
+              </button>
+              {!showOccupations && (
+                <input
+                  className="search"
+                  placeholder="Suchen nach Name oder Kreisverband…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  aria-label="Suche nach Name oder Kreisverband"
+                />
+              )}
             </div>
 
             {error && (
@@ -822,7 +860,28 @@ export default function App() {
               </p>
             )}
 
-            {loading && signers.length === 0 ? (
+            {showOccupations ? (
+              occupationGroups.length === 0 ? (
+                <div
+                  style={{
+                    textAlign: "center",
+                    padding: 40,
+                    color: "var(--grau)",
+                  }}
+                >
+                  Noch keine Berufe angegeben.
+                </div>
+              ) : (
+                <div className="occupation-grid">
+                  {occupationGroups.map((g) => (
+                    <div key={g.occupation} className="occupation-chip">
+                      <span className="occupation-name">{g.occupation}</span>
+                      <span className="occupation-count">{g.count}</span>
+                    </div>
+                  ))}
+                </div>
+              )
+            ) : loading && signers.length === 0 ? (
               <div
                 style={{
                   textAlign: "center",
@@ -878,11 +937,6 @@ export default function App() {
                 Eine offene Initiative aus den Kreisverbänden. Kein offizielles
                 Schreiben des Parteivorstandes oder der Bundestagsfraktion.
               </p>
-              <div className="footer-disclaimer">
-                Diese Seite wurde nicht von der Partei Die Linke herausgegeben.
-                Es handelt sich um eine Initiative von Parteimitgliedern an der
-                Basis.
-              </div>
             </div>
             <div>
               <h3>Kontakt</h3>
@@ -968,7 +1022,7 @@ export default function App() {
                 disabled={resendCooldown > 0}
               >
                 {resendSent && resendCooldown > 0
-                  ? `E-Mail gesendet ✓ — nochmal in ${resendCooldown}s`
+                  ? `E-Mail gesendet ✓ nochmal in ${resendCooldown}s`
                   : resendCooldown > 0
                     ? `Erneut senden in ${resendCooldown}s`
                     : "Link erneut anfordern"}
@@ -1101,11 +1155,34 @@ function SignForm({ onSubmit, serverError }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [kv, setKv] = useState("");
+  const [occupation, setOccupation] = useState("");
   const [agree, setAgree] = useState(false);
   const [newsletter, setNewsletter] = useState(false);
   const [showSuggest, setShowSuggest] = useState(false);
+  const [showOccSuggest, setShowOccSuggest] = useState(false);
+  const [knownOccupations, setKnownOccupations] = useState([]);
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/occupations");
+        if (res.ok) {
+          const data = await res.json();
+          setKnownOccupations(data.map((d) => d.occupation));
+        }
+      } catch {}
+    })();
+  }, []);
+
+  const occMatches = useMemo(() => {
+    if (!occupation) return [];
+    const q = occupation.toLowerCase();
+    return knownOccupations
+      .filter((o) => o.toLowerCase().includes(q) && o.toLowerCase() !== q)
+      .slice(0, 6);
+  }, [occupation, knownOccupations]);
 
   const kvMatches = useMemo(() => {
     if (!kv) return [];
@@ -1135,6 +1212,7 @@ function SignForm({ onSubmit, serverError }) {
       name: name.trim(),
       email: email.trim(),
       kv: kv.trim(),
+      occupation: occupation.trim(),
       newsletter,
       agree,
     });
@@ -1142,6 +1220,7 @@ function SignForm({ onSubmit, serverError }) {
     setName("");
     setEmail("");
     setKv("");
+    setOccupation("");
     setAgree(false);
     setNewsletter(false);
     setErrors({});
@@ -1152,7 +1231,7 @@ function SignForm({ onSubmit, serverError }) {
       <span className="badge">Mitzeichnen</span>
       <h3>Unterschreiben in 30 Sekunden</h3>
       <div className="sub2">
-        Drei Felder, eine Bestätigung per E-Mail — fertig.
+        Felder ausfüllen, bestätigen per E-Mail. Fertig.
       </div>
 
       {serverError && (
@@ -1163,7 +1242,7 @@ function SignForm({ onSubmit, serverError }) {
 
       <div className="field">
         <label htmlFor="sign-name">
-          Name <span className="opt">— wird öffentlich gezeigt</span>
+          Name <span className="opt"> wird öffentlich gezeigt</span>
         </label>
         <input
           id="sign-name"
@@ -1186,7 +1265,7 @@ function SignForm({ onSubmit, serverError }) {
       <div className="field">
         <label htmlFor="sign-email">
           E-Mail{" "}
-          <span className="opt">— nur zur Verifizierung, nicht öffentlich</span>
+          <span className="opt"> nur zur Verifizierung, nicht öffentlich</span>
         </label>
         <input
           id="sign-email"
@@ -1208,7 +1287,7 @@ function SignForm({ onSubmit, serverError }) {
 
       <div className="field" style={{ position: "relative" }}>
         <label htmlFor="sign-kv">
-          Kreisverband <span className="opt">— optional</span>
+          Kreisverband <span className="opt"> optional</span>
         </label>
         <input
           id="sign-kv"
@@ -1246,6 +1325,50 @@ function SignForm({ onSubmit, serverError }) {
         )}
       </div>
 
+      <div className="field" style={{ position: "relative" }}>
+        <label htmlFor="sign-occupation">
+          Beruf <span className="opt"> optional</span>
+        </label>
+        <input
+          id="sign-occupation"
+          type="text"
+          value={occupation}
+          onChange={(e) => {
+            setOccupation(e.target.value);
+            setShowOccSuggest(true);
+          }}
+          onFocus={() => setShowOccSuggest(true)}
+          onBlur={() => setTimeout(() => setShowOccSuggest(false), 150)}
+          placeholder="z. B. Sozialarbeiter*in"
+          autoComplete="off"
+          role="combobox"
+          aria-expanded={showOccSuggest && occupation && occMatches.length > 0}
+          aria-autocomplete="list"
+          aria-controls="occ-listbox"
+        />
+        {showOccSuggest && occupation && occMatches.length > 0 && (
+          <div
+            id="occ-listbox"
+            role="listbox"
+            className="autocomplete-dropdown"
+          >
+            {occMatches.map((o) => (
+              <div
+                key={o}
+                role="option"
+                onMouseDown={() => {
+                  setOccupation(o);
+                  setShowOccSuggest(false);
+                }}
+                className="autocomplete-option"
+              >
+                {o}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="checks">
         <label className="check">
           <input
@@ -1254,8 +1377,8 @@ function SignForm({ onSubmit, serverError }) {
             onChange={(e) => setAgree(e.target.checked)}
           />
           <span>
-            Mein <strong>Name (und ggf. Kreisverband)</strong> darf öffentlich
-            auf dieser Seite angezeigt werden.{" "}
+            Mein <strong>Name (und ggf. Kreisverband/Beruf)</strong> darf
+            öffentlich auf dieser Seite angezeigt werden.{" "}
             <span className="opt">(optional)</span>
           </span>
         </label>
@@ -1403,13 +1526,15 @@ function DatenschutzModal({ onClose }) {
             <strong>b) Unterschriften</strong>
             <br />
             Beim Mitzeichnen werden Name, E-Mail-Adresse sowie optionaler
-            Kreisverband gespeichert. Rechtsgrundlage ist deine ausdrückliche
-            Einwilligung (Art. 6 Abs. 1 lit. a DS-GVO). Die Daten werden{" "}
-            <strong>ausschließlich für diese Petition verwendet</strong> und
-            nicht an Dritte weitergegeben oder für andere Zwecke genutzt. Sie
-            werden für die Dauer der Initiative gespeichert und bei Beendigung
-            der Kampagne vollständig gelöscht — spätestens jedoch 3 Jahre nach
-            Unterzeichnung (§ 195 BGB) oder auf frühere Anfrage.
+            Kreisverband und Beruf gespeichert. Rechtsgrundlage ist deine
+            ausdrückliche Einwilligung (Art. 6 Abs. 1 lit. a DS-GVO). Die Daten
+            werden <strong>
+              ausschließlich für diese Petition verwendet
+            </strong>{" "}
+            und nicht an Dritte weitergegeben oder für andere Zwecke genutzt.
+            Sie werden für die Dauer der Initiative gespeichert und bei
+            Beendigung der Kampagne vollständig gelöscht , spätestens jedoch 3
+            Jahre nach Unterzeichnung (§ 195 BGB) oder auf frühere Anfrage.
           </p>
           <p>
             <strong>c) Newsletter / Kampagnen-Updates</strong>
@@ -1419,7 +1544,7 @@ function DatenschutzModal({ onClose }) {
               ausschließlich versendet, wenn du beim Unterschreiben die
               entsprechende Checkbox aktiviert hast
             </strong>
-            . Du kannst diese Einwilligung jederzeit widerrufen — über das
+            . Du kannst diese Einwilligung jederzeit widerrufen - über das
             Löschformular unten oder durch Antwort auf eine Kampagnen-E-Mail.
           </p>
 
@@ -1447,7 +1572,7 @@ function DatenschutzModal({ onClose }) {
           </p>
           <p>
             Bundesbeauftragte für den Datenschutz und die Informationsfreiheit
-            (BfDI) —{" "}
+            (BfDI) -{" "}
             <a
               href="https://www.bfdi.bund.de"
               target="_blank"
@@ -1462,7 +1587,7 @@ function DatenschutzModal({ onClose }) {
           <h5>Unterschrift löschen</h5>
           <p>
             Du kannst deine Unterschrift und alle damit gespeicherten Daten
-            jederzeit löschen lassen. Gib dazu deine E-Mail-Adresse ein — wir
+            jederzeit löschen lassen. Gib dazu deine E-Mail-Adresse ein - wir
             schicken dir einen Löschlink.
           </p>
 

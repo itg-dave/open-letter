@@ -60,10 +60,19 @@ const emailCss = `
   footer { border-top: 1px solid #6f003c; color: #6b6b6b; font-size: 13px; line-height: 1.5; margin-top: 28px; padding-top: 16px; }
 `;
 
+function escapeHtml(str) {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+const URL_VARIABLES = new Set(["confirmUrl", "deleteUrl", "unsubscribeUrl"]);
+
 export function interpolateTemplate(value, variables = {}) {
   return String(value || "").replace(
     /\{\{\s*(name|confirmUrl|deleteUrl|signerCount|unsubscribeUrl)\s*\}\}/g,
-    (_, key) => String(variables[key] ?? ""),
+    (_, key) => {
+      const raw = String(variables[key] ?? "");
+      return URL_VARIABLES.has(key) ? raw : escapeHtml(raw);
+    },
   );
 }
 

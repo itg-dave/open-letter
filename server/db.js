@@ -34,7 +34,7 @@ export async function getSigners({
   if (search.trim()) {
     params.push(`%${search.trim().toLowerCase()}%`);
     conditions.push(
-      `(LOWER(s.name) LIKE $${params.length} OR LOWER(s.kreisverband) LIKE $${params.length})`,
+      `(LOWER(s.name) LIKE $${params.length} OR LOWER(s.kreisverband) LIKE $${params.length} OR LOWER(s.occupation) LIKE $${params.length})`,
     );
   }
 
@@ -47,7 +47,7 @@ export async function getSigners({
 
   params.push(limit, offset);
   const signers = await sql.unsafe(
-    `SELECT s.id, s.name, s.kreisverband, s.created_at
+    `SELECT s.id, s.name, s.kreisverband, s.occupation, s.created_at
      FROM signers s
      WHERE ${where}
      ORDER BY s.created_at DESC
@@ -84,17 +84,19 @@ export async function insertSigner({
   name,
   email,
   kv,
+  occupation,
   newsletter,
   showPublicly,
   token,
   expiresAt,
 }) {
   const result = await sql`
-    INSERT INTO signers (name, email, kreisverband, newsletter, show_publicly, verification_token, token_expires_at)
-    VALUES (${name}, ${email}, ${kv}, ${newsletter}, ${showPublicly}, ${token}, ${expiresAt})
+    INSERT INTO signers (name, email, kreisverband, occupation, newsletter, show_publicly, verification_token, token_expires_at)
+    VALUES (${name}, ${email}, ${kv}, ${occupation || ''}, ${newsletter}, ${showPublicly}, ${token}, ${expiresAt})
     ON CONFLICT (email) DO UPDATE
       SET name = EXCLUDED.name,
           kreisverband = EXCLUDED.kreisverband,
+          occupation = EXCLUDED.occupation,
           newsletter = EXCLUDED.newsletter,
           show_publicly = EXCLUDED.show_publicly,
           verification_token = EXCLUDED.verification_token,
@@ -341,6 +343,45 @@ export async function deleteSignerByUnsubscribeToken(token) {
     RETURNING id
   `;
   return Boolean(signer);
+}
+
+function normalizeOccupation(occ) {
+  let s = occ.trim();
+  s = s.replace(/\*innen$|\*in$|:innen$|:in$|\/innen$|\/in$/i, "");
+  s = s.replace(/innen$|in$/i, (m, offset, str) => {
+    const before = str.slice(0, offset);
+    if (before.length >= 2) return "";
+    return m;
+  });
+  return s.toLowerCase();
+}
+
+export async function getOccupations() {
+  const rows = await sql`
+    SELECT occupation, COUNT(*)::int AS count
+    FROM signers
+    WHERE verified = TRUE AND occupation != '' AND show_publicly = TRUE
+    GROUP BY occupation
+    ORDER BY count DESC, occupation ASC
+  `;
+  const groups = new Map();
+  for (const row of rows) {
+    const key = normalizeOccupation(row.occupation);
+    if (groups.has(key)) {
+      const g = groups.get(key);
+      g.count += row.count;
+      if (row.count > g.maxCount) {
+        g.maxCount = row.count;
+        g.label = row.occupation;
+      }
+    } else {
+      groups.set(key, { label: row.occupation, count: row.count, maxCount: row.count });
+    }
+  }
+  return [...groups.values()]
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, "de"))
+    .slice(0, 100)
+    .map((g) => ({ occupation: g.label, count: g.count }));
 }
 
 export async function healthCheck() {

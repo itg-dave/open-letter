@@ -66,3 +66,5 @@ CREATE TABLE IF NOT EXISTS campaigns (
 
 CREATE INDEX IF NOT EXISTS idx_campaigns_due
   ON campaigns (status, scheduled_at);
+
+ALTER TABLE signers ADD COLUMN IF NOT EXISTS occupation TEXT DEFAULT '';

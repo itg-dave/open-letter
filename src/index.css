@@ -16,6 +16,10 @@
   --erfolg: #0a7a3a;
   --fehler: #b00020;
   --fehler-hell: color-mix(in srgb, var(--fehler) 7%, var(--weiss));
+  --ls-tight: -0.02em;
+  --ls-body: -0.01em;
+  --ls-wide: 0.08em;
+  --ls-caps: 0.12em;
 }
 
 * {
@@ -101,7 +105,7 @@ button {
   font-family: "Work Sans";
   font-weight: 900;
   font-size: 18px;
-  letter-spacing: -0.01em;
+  letter-spacing: var(--ls-body);
 }
 
 .wordmark .dot {
@@ -139,7 +143,7 @@ button {
   font-size: 14px;
   cursor: pointer;
   font-family: "Work Sans";
-  letter-spacing: 0.01em;
+  letter-spacing: var(--ls-body);
 }
 
 .topbar .cta:hover {
@@ -291,7 +295,7 @@ button {
   font-family: "Work Sans";
   font-weight: 700;
   font-size: 13px;
-  letter-spacing: 0.02em;
+  letter-spacing: var(--ls-body);
   text-transform: none;
   margin-bottom: 28px;
   position: relative;
@@ -321,7 +325,7 @@ h1.headline {
   font-weight: 900;
   font-size: clamp(56px, 9vw, 144px);
   line-height: 0.92;
-  letter-spacing: -0.025em;
+  letter-spacing: var(--ls-tight);
   margin: 0 0 24px;
   color: var(--akzent);
   max-width: 14ch;
@@ -391,7 +395,7 @@ h1.headline .banner {
   font-family: "Work Sans";
   font-weight: 700;
   font-size: 12px;
-  letter-spacing: 0.12em;
+  letter-spacing: var(--ls-caps);
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.75);
 }
@@ -401,7 +405,7 @@ h1.headline .banner {
   font-weight: 900;
   font-size: clamp(48px, 13vw, 72px);
   line-height: 0.95;
-  letter-spacing: -0.03em;
+  letter-spacing: var(--ls-tight);
 }
 
 .counter-card .num .unit {
@@ -489,7 +493,7 @@ h1.headline .banner {
   font-weight: 900;
   font-size: 14px;
   color: var(--rot);
-  letter-spacing: 0.05em;
+  letter-spacing: var(--ls-wide);
 }
 
 .section-head h2 {
@@ -498,7 +502,7 @@ h1.headline .banner {
   font-size: clamp(34px, 4.2vw, 56px);
   margin: 0;
   line-height: 0.95;
-  letter-spacing: -0.02em;
+  letter-spacing: var(--ls-tight);
 }
 
 .brief-wrap {
@@ -523,7 +527,7 @@ h1.headline .banner {
   font-family: "Work Sans";
   font-weight: 700;
   font-size: 11px;
-  letter-spacing: 0.12em;
+  letter-spacing: var(--ls-caps);
   text-transform: uppercase;
   color: var(--grau);
   margin-top: 18px;
@@ -568,7 +572,7 @@ h1.headline .banner {
   font-size: clamp(28px, 3vw, 40px);
   margin: 0 0 8px;
   line-height: 1.02;
-  letter-spacing: -0.015em;
+  letter-spacing: var(--ls-tight);
 }
 
 .brief-paper .anrede {
@@ -623,7 +627,7 @@ h1.headline .banner {
   font-weight: 300;
   font-size: 24px;
   line-height: 1.25;
-  letter-spacing: -0.01em;
+  letter-spacing: var(--ls-body);
 }
 
 /* ---------- Forderungen Strip ---------- */
@@ -645,7 +649,7 @@ h1.headline .banner {
   font-size: clamp(34px, 4.2vw, 56px);
   margin: 0 0 40px;
   line-height: 0.95;
-  letter-spacing: -0.02em;
+  letter-spacing: var(--ls-tight);
 }
 
 .demands h2 em {
@@ -681,7 +685,7 @@ h1.headline .banner {
   font-weight: 900;
   font-size: 14px;
   color: var(--rot);
-  letter-spacing: 0.05em;
+  letter-spacing: var(--ls-wide);
 }
 
 .demand h4 {
@@ -690,7 +694,7 @@ h1.headline .banner {
   font-size: 24px;
   margin: 0;
   line-height: 1.05;
-  letter-spacing: -0.01em;
+  letter-spacing: var(--ls-body);
 }
 
 .demand p {
@@ -724,7 +728,7 @@ h1.headline .banner {
   font-size: clamp(40px, 5vw, 72px);
   line-height: 0.92;
   margin: 0 0 20px;
-  letter-spacing: -0.025em;
+  letter-spacing: var(--ls-tight);
 }
 
 .sign-intro h2 .rot {
@@ -796,7 +800,7 @@ h1.headline .banner {
   font-family: "Work Sans";
   font-weight: 700;
   font-size: 12px;
-  letter-spacing: 0.12em;
+  letter-spacing: var(--ls-caps);
   text-transform: uppercase;
   padding: 6px 12px;
 }
@@ -806,7 +810,7 @@ h1.headline .banner {
   font-weight: 900;
   font-size: 28px;
   margin: 8px 0 6px;
-  letter-spacing: -0.01em;
+  letter-spacing: var(--ls-body);
 }
 
 .form-card .sub2 {
@@ -825,7 +829,7 @@ h1.headline .banner {
   font-family: "Work Sans";
   font-weight: 700;
   font-size: 12px;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--ls-wide);
   text-transform: uppercase;
   margin-bottom: 6px;
 }
@@ -933,7 +937,7 @@ h1.headline .banner {
   font-family: "Work Sans";
   font-weight: 900;
   font-size: 18px;
-  letter-spacing: -0.01em;
+  letter-spacing: var(--ls-body);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -1032,7 +1036,7 @@ h1.headline .banner {
   font-weight: 900;
   font-size: 22px;
   margin: 0;
-  letter-spacing: -0.01em;
+  letter-spacing: var(--ls-body);
 }
 
 .modal-head button {
@@ -1075,7 +1079,7 @@ h1.headline .banner {
   font-weight: 900;
   font-size: 22px;
   margin: 0 0 8px;
-  letter-spacing: -0.01em;
+  letter-spacing: var(--ls-body);
 }
 
 .modal-body .email-pill {
@@ -1219,7 +1223,7 @@ h1.headline .banner {
   font-size: clamp(34px, 4.2vw, 56px);
   margin: 0;
   line-height: 0.95;
-  letter-spacing: -0.02em;
+  letter-spacing: var(--ls-tight);
 }
 
 .signers-head .total {
@@ -1260,14 +1264,14 @@ h1.headline .banner {
   font-weight: 900;
   font-size: 36px;
   line-height: 1;
-  letter-spacing: -0.02em;
+  letter-spacing: var(--ls-tight);
 }
 
 .stat .k {
   font-family: "Work Sans";
   font-weight: 700;
   font-size: 11px;
-  letter-spacing: 0.1em;
+  letter-spacing: var(--ls-wide);
   text-transform: uppercase;
   color: var(--grau);
   margin-top: 6px;
@@ -1384,7 +1388,7 @@ h1.headline .banner {
   font-weight: 700;
   font-size: 15px;
   line-height: 1.2;
-  letter-spacing: -0.005em;
+  letter-spacing: var(--ls-body);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1428,6 +1432,47 @@ h1.headline .banner {
   color: var(--weiss);
 }
 
+/* ---------- Occupation grid ---------- */
+.occupation-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.occupation-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--weiss);
+  border: 1.5px solid var(--akzent);
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--akzent);
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.occupation-chip:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--rot);
+}
+
+.occupation-name {
+  font-family: "Work Sans", sans-serif;
+  font-weight: 700;
+}
+
+.occupation-count {
+  font-family: "Work Sans", sans-serif;
+  font-weight: 900;
+  font-size: 12px;
+  background: var(--akzent);
+  color: var(--weiss);
+  padding: 2px 7px;
+  min-width: 22px;
+  text-align: center;
+}
+
 /* ---------- Footer ---------- */
 footer {
   background: var(--weiss);
@@ -1460,7 +1505,7 @@ footer {
   font-weight: 900;
   font-size: 18px;
   margin: 0 0 14px;
-  letter-spacing: -0.01em;
+  letter-spacing: var(--ls-body);
 }
 
 .footer-top p,
@@ -1508,7 +1553,7 @@ footer {
   font-size: 10px;
   padding: 2px 6px;
   margin-left: 8px;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--ls-wide);
   text-transform: uppercase;
   vertical-align: middle;
 }
@@ -1739,7 +1784,7 @@ footer {
   font-family: "Work Sans";
   font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--ls-wide);
   margin-bottom: 8px;
   text-transform: uppercase;
 }
@@ -1849,6 +1894,35 @@ footer {
 .editor-toolbar button.active,
 .editor-toolbar button:hover,
 .admin-variable-row button:hover {
+  background: var(--akzent);
+  color: var(--weiss);
+}
+
+.link-input-row {
+  display: flex;
+  gap: 6px;
+  padding: 6px 0;
+}
+.link-input-row input {
+  flex: 1;
+  font-family: "Work Sans", sans-serif;
+  font-size: 14px;
+  padding: 5px 10px;
+  border: 1.5px solid var(--akzent);
+  background: var(--weiss);
+  color: var(--akzent);
+}
+.link-input-row button {
+  font-family: "Work Sans", sans-serif;
+  font-weight: 700;
+  font-size: 13px;
+  padding: 5px 12px;
+  border: 1.5px solid var(--akzent);
+  background: var(--weiss);
+  color: var(--akzent);
+  cursor: pointer;
+}
+.link-input-row button:hover {
   background: var(--akzent);
   color: var(--weiss);
 }
@@ -1988,7 +2062,7 @@ footer {
   font-family: "Work Sans", sans-serif;
   font-weight: 900;
   font-size: 14px;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--ls-wide);
   text-transform: uppercase;
   color: var(--akzent);
   height: var(--rdp-nav-height);
@@ -2020,7 +2094,7 @@ footer {
 .rdp-weekday {
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.07em;
+  letter-spacing: var(--ls-wide);
   text-transform: uppercase;
   color: var(--grau);
   padding-block: 6px;
@@ -2286,7 +2360,7 @@ footer {
   font-weight: 900;
   font-size: 16px;
   margin: 0 0 16px;
-  letter-spacing: -0.01em;
+  letter-spacing: var(--ls-body);
 }
 
 .modal-legal-body h5 {
@@ -2294,7 +2368,7 @@ footer {
   font-weight: 700;
   font-size: 12px;
   margin: 22px 0 8px;
-  letter-spacing: 0.08em;
+  letter-spacing: var(--ls-wide);
   text-transform: uppercase;
   color: var(--akzent);
 }
