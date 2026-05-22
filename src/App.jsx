@@ -51,7 +51,7 @@ const KREISVERBAENDE = [
   "Osnabrück",
 ];
 
-const ZIEL = 100;
+const MILESTONES = [100, 300, 500];
 
 function initials(name) {
   const parts = (name || "").trim().split(/\s+/);
@@ -414,6 +414,8 @@ export default function App() {
   ]);
 
   const total = stats.total;
+  const ZIEL =
+    MILESTONES.find((m) => m > total) ?? MILESTONES[MILESTONES.length - 1];
   const pct = Math.min(100, Math.round((total / ZIEL) * 100));
 
   return (
@@ -1084,7 +1086,7 @@ export default function App() {
               <p>
                 Deine Unterschrift ist jetzt Teil des offenen Briefes. Teile ihn
                 mit deinem Kreisverband - wir wollen vor dem nächsten Parteitag
-                bei 100 stehen.
+                bei {ZIEL} stehen.
               </p>
               <button
                 className="confirm-btn"
