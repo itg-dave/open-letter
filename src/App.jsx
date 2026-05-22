@@ -666,7 +666,7 @@ export default function App() {
 
               <p>
                 Wir alle teilen eine Vision. Das Comeback 2025 war nur der erste
-                Schritt. Wir wollen die Linke weiter aufbauen, Menschen
+                Schritt. Wir wollen Die Linke weiter aufbauen, Menschen
                 organisieren und so eine nachhaltige sozialistische Politik
                 schaffen. In den letzten Monaten haben wir erlebt, zu was wir in
                 der Lage sind, wenn wir an einem Strang ziehen. Genau diesen Weg
@@ -722,7 +722,7 @@ export default function App() {
                 </h2>
                 <ul>
                   <li>
-                    Du bist Mitglied oder Sympathisant:in der Partei Die Linke.
+                    Du bist Mitglied oder Sympathisant*in der Partei Die Linke.
                   </li>
                   <li>Du stehst hinter diesem Brief.</li>
                   <li>
