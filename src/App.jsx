@@ -51,7 +51,9 @@ const KREISVERBAENDE = [
   "Osnabrück",
 ];
 
-const MILESTONES = [500, 700, 1000];
+const MILESTONES = [
+  1000, 1300, 1600, 2000, 2300, 2600, 3000, 4000, 5000, 7500, 10000,
+];
 
 function initials(name) {
   const parts = (name || "").trim().split(/\s+/);
@@ -854,9 +856,7 @@ export default function App() {
                 Heute
               </button>
               <button
-                className={
-                  "filter-chip " + (showKreisverband ? "active" : "")
-                }
+                className={"filter-chip " + (showKreisverband ? "active" : "")}
                 onClick={() => {
                   setShowOccupations(false);
                   setShowKreisverband((v) => !v);
@@ -913,9 +913,7 @@ export default function App() {
                 <div className="occupation-grid">
                   {kvGroups.map((g) => (
                     <div key={g.kreisverband} className="occupation-chip">
-                      <span className="occupation-name">
-                        {g.kreisverband}
-                      </span>
+                      <span className="occupation-name">{g.kreisverband}</span>
                       <span className="occupation-count">{g.count}</span>
                     </div>
                   ))}
