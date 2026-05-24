@@ -56,11 +56,17 @@ export function startBackupSchedule() {
     return;
   }
 
+  // Belt-and-suspenders: the outer .catch() ensures a bug inside runBackup
+  // (or a Bun internal error) can never produce an unhandled rejection that
+  // would crash the server process.
+  const safe = () =>
+    runBackup().catch((err) => console.error("[backup] unhandled error:", err));
+
   // First backup 30 s after startup, then every hour
-  const initial = setTimeout(runBackup, 30_000);
+  const initial = setTimeout(safe, 30_000);
   initial.unref?.();
 
-  const interval = setInterval(runBackup, ONE_HOUR);
+  const interval = setInterval(safe, ONE_HOUR);
   interval.unref?.();
 
   console.log(
