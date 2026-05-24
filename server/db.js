@@ -405,17 +405,53 @@ export async function getKreisverbandStats() {
   return rows;
 }
 
+export async function getDistinctKreisverbands() {
+  return await sql`
+    SELECT kreisverband, COUNT(*)::int AS count
+    FROM signers
+    WHERE verified = TRUE AND kreisverband != ''
+    GROUP BY kreisverband
+    ORDER BY count DESC, kreisverband ASC
+  `;
+}
+
+export async function mergeKreisverband(fromKv, toKv) {
+  const result = await sql`
+    UPDATE signers
+    SET kreisverband = ${toKv}, state = ''
+    WHERE kreisverband = ${fromKv}
+    RETURNING id
+  `;
+  return result.length;
+}
+
 export async function updateSignerState(id, state) {
   await sql`UPDATE signers SET state = ${state} WHERE id = ${id}`;
 }
 
-export async function getSignersNeedingState(limit = 50) {
+export async function getSignersNeedingState(limit = null) {
+  if (limit) {
+    return await sql`
+      SELECT s.id, s.kreisverband
+      FROM signers s
+      LEFT JOIN kv_state_cache c ON c.kreisverband = s.kreisverband
+      WHERE s.verified = TRUE
+        AND s.kreisverband != ''
+        AND s.state = ''
+        AND (c.kreisverband IS NULL OR c.state != '')
+      ORDER BY s.created_at DESC
+      LIMIT ${limit}
+    `;
+  }
   return await sql`
-    SELECT id, kreisverband
-    FROM signers
-    WHERE verified = TRUE AND kreisverband != '' AND state = ''
-    ORDER BY created_at DESC
-    LIMIT ${limit}
+    SELECT s.id, s.kreisverband
+    FROM signers s
+    LEFT JOIN kv_state_cache c ON c.kreisverband = s.kreisverband
+    WHERE s.verified = TRUE
+      AND s.kreisverband != ''
+      AND s.state = ''
+      AND (c.kreisverband IS NULL OR c.state != '')
+    ORDER BY s.created_at DESC
   `;
 }
 
@@ -429,6 +465,76 @@ export async function getStateStats() {
     GROUP BY 1
     ORDER BY count DESC, state ASC
   `;
+}
+
+export async function ensureKvStateCacheTable() {
+  await sql`
+    CREATE TABLE IF NOT EXISTS kv_state_cache (
+      kreisverband  TEXT PRIMARY KEY,
+      state         TEXT NOT NULL DEFAULT '',
+      source        TEXT NOT NULL DEFAULT 'nominatim',
+      resolved_at   TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS kv_not_typo (
+      canonical     TEXT NOT NULL,
+      outlier       TEXT NOT NULL,
+      created_at    TIMESTAMPTZ DEFAULT NOW(),
+      PRIMARY KEY (canonical, outlier)
+    )
+  `;
+}
+
+export async function insertKvNotTypo(canonical, outlier) {
+  await sql`
+    INSERT INTO kv_not_typo (canonical, outlier)
+    VALUES (${canonical}, ${outlier})
+    ON CONFLICT DO NOTHING
+  `;
+}
+
+export async function loadKvNotTypo() {
+  return await sql`SELECT canonical, outlier FROM kv_not_typo`;
+}
+
+export async function upsertKvStateCache(kreisverband, state, source = "nominatim") {
+  await sql`
+    INSERT INTO kv_state_cache (kreisverband, state, source, resolved_at)
+    VALUES (${kreisverband}, ${state}, ${source}, NOW())
+    ON CONFLICT (kreisverband) DO UPDATE
+      SET state = EXCLUDED.state,
+          source = EXCLUDED.source,
+          resolved_at = NOW()
+  `;
+}
+
+export async function loadKvStateCache() {
+  return await sql`
+    SELECT kreisverband, state FROM kv_state_cache WHERE state != ''
+  `;
+}
+
+export async function bulkUpdateSignerStateByKv(kreisverband, state) {
+  const result = await sql`
+    UPDATE signers SET state = ${state}
+    WHERE kreisverband = ${kreisverband} AND state = ''
+    RETURNING id
+  `;
+  return result.length;
+}
+
+export async function getStateResolutionStats() {
+  const [row] = await sql`
+    SELECT
+      COUNT(DISTINCT s.kreisverband) FILTER (WHERE s.state != '')::int AS "resolvedKvs",
+      COUNT(DISTINCT s.kreisverband) FILTER (WHERE s.state = '')::int AS "unresolvedKvs",
+      COUNT(*) FILTER (WHERE s.state = '')::int AS "unresolvedSigners",
+      COUNT(*) FILTER (WHERE s.state != '')::int AS "resolvedSigners"
+    FROM signers s
+    WHERE s.verified = TRUE AND s.kreisverband != ''
+  `;
+  return row;
 }
 
 export async function healthCheck() {

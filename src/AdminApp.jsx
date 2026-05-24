@@ -366,6 +366,11 @@ export default function AdminApp() {
   const [dateInput, setDateInput] = useState(() =>
     format(new Date(), "dd.MM.yyyy"),
   );
+  const [stateResolution, setStateResolution] = useState(null);
+  const [resolving, setResolving] = useState(false);
+  const [resolveMessage, setResolveMessage] = useState("");
+  const [outlierGroups, setOutlierGroups] = useState([]);
+  const [merging, setMerging] = useState(null);
 
   function handleDateInput(e) {
     const raw = e.target.value;
@@ -396,11 +401,14 @@ export default function AdminApp() {
 
   const loadAll = useCallback(async () => {
     if (!token) return;
-    const [templateRes, campaignRes, statsRes] = await Promise.all([
-      api("/api/admin/templates"),
-      api("/api/admin/campaigns"),
-      api("/api/admin/stats"),
-    ]);
+    const [templateRes, campaignRes, statsRes, stateRes, outlierRes] =
+      await Promise.all([
+        api("/api/admin/templates"),
+        api("/api/admin/campaigns"),
+        api("/api/admin/stats"),
+        api("/api/admin/state-resolution-status"),
+        api("/api/admin/kv-outliers"),
+      ]);
     if (templateRes.ok) {
       const data = await templateRes.json();
       setTemplates(data);
@@ -410,6 +418,8 @@ export default function AdminApp() {
     }
     if (campaignRes.ok) setCampaigns(await campaignRes.json());
     if (statsRes.ok) setStats(await statsRes.json());
+    if (stateRes.ok) setStateResolution(await stateRes.json());
+    if (outlierRes.ok) setOutlierGroups(await outlierRes.json());
   }, [api, token]);
 
   useEffect(() => {
@@ -830,6 +840,197 @@ export default function AdminApp() {
               <span>Newsletter</span>
               <strong>{stats.subscriberCount.toLocaleString("de-DE")}</strong>
             </div>
+            <div className="admin-card" style={{ gridColumn: "1 / -1" }}>
+              <div className="admin-card-title">Bundesland-Zuordnung</div>
+              {stateResolution && (
+                <div className="state-resolution-stats">
+                  <p>
+                    <strong>{stateResolution.resolvedKvs}</strong> Kreisverbände
+                    zugeordnet,{" "}
+                    <strong>{stateResolution.unresolvedKvs}</strong> offen
+                  </p>
+                  <p>
+                    <strong>
+                      {stateResolution.resolvedSigners}
+                    </strong>{" "}
+                    Mitzeichner*innen mit Bundesland,{" "}
+                    <strong>
+                      {stateResolution.unresolvedSigners}
+                    </strong>{" "}
+                    ohne
+                  </p>
+                  {stateResolution.queueLength > 0 && (
+                    <p className="admin-muted">
+                      Warteschlange: {stateResolution.queueLength} ausstehend
+                    </p>
+                  )}
+                </div>
+              )}
+              <div className="admin-actions">
+                <button
+                  type="button"
+                  className="cta"
+                  disabled={resolving}
+                  onClick={async () => {
+                    setResolving(true);
+                    setResolveMessage("");
+                    try {
+                      const res = await api("/api/admin/resolve-states", {
+                        method: "POST",
+                      });
+                      if (res.ok) {
+                        const data = await res.json();
+                        setResolveMessage(
+                          data.enqueued > 0
+                            ? `${data.enqueued} Mitzeichner*innen zur Zuordnung eingereiht.`
+                            : "Keine unzugeordneten Mitzeichner*innen gefunden.",
+                        );
+                        const statusRes = await api(
+                          "/api/admin/state-resolution-status",
+                        );
+                        if (statusRes.ok)
+                          setStateResolution(await statusRes.json());
+                      } else {
+                        setResolveMessage("Fehler bei der Zuordnung.");
+                      }
+                    } catch {
+                      setResolveMessage("Fehler bei der Zuordnung.");
+                    }
+                    setResolving(false);
+                  }}
+                >
+                  {resolving ? "Wird gestartet…" : "Zuordnung starten"}
+                </button>
+              </div>
+              {resolveMessage && (
+                <p className="admin-muted">{resolveMessage}</p>
+              )}
+            </div>
+            {outlierGroups.length > 0 && (
+              <div className="admin-card" style={{ gridColumn: "1 / -1" }}>
+                <div className="admin-card-title">
+                  KV-Tippfehler ({outlierGroups.reduce((n, g) => n + g.outliers.length, 0)})
+                </div>
+                <div className="outlier-groups">
+                  {outlierGroups.map((group) => (
+                    <div className="outlier-group" key={group.canonical.name}>
+                      <div className="outlier-canonical">
+                        <strong>{group.canonical.name}</strong>
+                        <span className="admin-muted">
+                          {" "}({group.canonical.count})
+                        </span>
+                      </div>
+                      {group.outliers.map((outlier) => (
+                        <div className="outlier-row" key={outlier.name}>
+                          <span className="outlier-name">
+                            {outlier.name}
+                            <span className="admin-muted">
+                              {" "}({outlier.count})
+                            </span>
+                          </span>
+                          <span className="outlier-actions">
+                          <button
+                            type="button"
+                            className="cta cta--outline outlier-merge-btn"
+                            disabled={merging === outlier.name}
+                            onClick={async () => {
+                              setMerging(outlier.name);
+                              try {
+                                const res = await api("/api/admin/merge-kv", {
+                                  method: "POST",
+                                  body: JSON.stringify({
+                                    from: outlier.name,
+                                    to: group.canonical.name,
+                                  }),
+                                });
+                                if (res.ok) {
+                                  setOutlierGroups((prev) =>
+                                    prev
+                                      .map((g) =>
+                                        g.canonical.name ===
+                                        group.canonical.name
+                                          ? {
+                                              ...g,
+                                              canonical: {
+                                                ...g.canonical,
+                                                count:
+                                                  g.canonical.count +
+                                                  outlier.count,
+                                              },
+                                              outliers: g.outliers.filter(
+                                                (o) => o.name !== outlier.name,
+                                              ),
+                                            }
+                                          : g,
+                                      )
+                                      .filter((g) => g.outliers.length > 0),
+                                  );
+                                  const statusRes = await api(
+                                    "/api/admin/state-resolution-status",
+                                  );
+                                  if (statusRes.ok)
+                                    setStateResolution(await statusRes.json());
+                                }
+                              } catch {
+                                /* ignore */
+                              }
+                              setMerging(null);
+                            }}
+                          >
+                            {merging === outlier.name
+                              ? "…"
+                              : `→ ${group.canonical.name}`}
+                          </button>
+                          <button
+                            type="button"
+                            className="outlier-dismiss"
+                            disabled={merging === outlier.name}
+                            onClick={async () => {
+                              setMerging(outlier.name);
+                              try {
+                                const res = await api(
+                                  "/api/admin/dismiss-outlier",
+                                  {
+                                    method: "POST",
+                                    body: JSON.stringify({
+                                      canonical: group.canonical.name,
+                                      outlier: outlier.name,
+                                    }),
+                                  },
+                                );
+                                if (res.ok) {
+                                  setOutlierGroups((prev) =>
+                                    prev
+                                      .map((g) =>
+                                        g.canonical.name ===
+                                        group.canonical.name
+                                          ? {
+                                              ...g,
+                                              outliers: g.outliers.filter(
+                                                (o) => o.name !== outlier.name,
+                                              ),
+                                            }
+                                          : g,
+                                      )
+                                      .filter((g) => g.outliers.length > 0),
+                                  );
+                                }
+                              } catch {
+                                /* ignore */
+                              }
+                              setMerging(null);
+                            }}
+                          >
+                            Stimmt so
+                          </button>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="admin-card">
               <div className="admin-card-title">Sitzung</div>
               <button className="admin-danger" type="button" onClick={logout}>

@@ -1,7 +1,7 @@
 import { createRoot } from "react-dom/client";
-import { Component } from "react";
+import { Component, lazy, Suspense } from "react";
 import App from "./App.jsx";
-import AdminApp from "./AdminApp.jsx";
+const AdminApp = lazy(() => import("./AdminApp.jsx"));
 import UnsubscribeApp from "./UnsubscribeApp.jsx";
 import "./index.css";
 
@@ -55,7 +55,12 @@ class ErrorBoundary extends Component {
 function getRootComponent() {
   const parts = window.location.pathname.split("/").filter(Boolean);
   if (parts[0] === "abmelden" && parts[1]) return <UnsubscribeApp />;
-  if (parts[0] === "verwaltung" && parts.length === 1) return <AdminApp />;
+  if (parts[0] === "verwaltung" && parts.length === 1)
+    return (
+      <Suspense fallback={null}>
+        <AdminApp />
+      </Suspense>
+    );
   return <App />;
 }
 

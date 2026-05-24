@@ -74,3 +74,17 @@ ALTER TABLE signers ADD COLUMN IF NOT EXISTS state TEXT DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_signers_state
   ON signers (state)
   WHERE verified = TRUE AND state != '';
+
+CREATE TABLE IF NOT EXISTS kv_state_cache (
+  kreisverband  TEXT PRIMARY KEY,
+  state         TEXT NOT NULL DEFAULT '',
+  source        TEXT NOT NULL DEFAULT 'nominatim',
+  resolved_at   TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS kv_not_typo (
+  canonical     TEXT NOT NULL,
+  outlier       TEXT NOT NULL,
+  created_at    TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (canonical, outlier)
+);

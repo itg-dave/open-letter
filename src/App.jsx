@@ -264,6 +264,7 @@ export default function App() {
 
   useEffect(() => {
     const interval = setInterval(async () => {
+      if (document.hidden) return;
       fetchStats();
       try {
         const params = new URLSearchParams({
@@ -515,55 +516,55 @@ export default function App() {
           <span></span>
         </button>
       </header>
-      {navOpen && (
-        <nav
-          id="mobile-nav"
-          className="mobile-nav"
-          aria-label="Mobilnavigation"
+      <nav
+        id="mobile-nav"
+        className={"mobile-nav" + (navOpen ? " open" : "")}
+        aria-label="Mobilnavigation"
+        aria-hidden={!navOpen}
+        inert={navOpen ? undefined : ""}
+      >
+        <a
+          href="#brief"
+          onClick={(e) => {
+            e.preventDefault();
+            setNavOpen(false);
+            scrollTo("brief");
+          }}
         >
-          <a
-            href="#brief"
-            onClick={(e) => {
-              e.preventDefault();
-              setNavOpen(false);
-              scrollTo("brief");
-            }}
-          >
-            Brief
-          </a>
-          <a
-            href="#unterzeichnen"
-            onClick={(e) => {
-              e.preventDefault();
-              setNavOpen(false);
-              scrollTo("unterzeichnen");
-            }}
-          >
-            Unterzeichnen
-          </a>
-          <a
-            href="#liste"
-            onClick={(e) => {
-              e.preventDefault();
-              setNavOpen(false);
-              scrollTo("liste");
-            }}
-          >
-            Unterstützer*innen
-          </a>
-          <a
-            href="#unterzeichnen"
-            className="mobile-nav-cta"
-            onClick={(e) => {
-              e.preventDefault();
-              setNavOpen(false);
-              scrollTo("unterzeichnen");
-            }}
-          >
-            Jetzt mitzeichnen <span aria-hidden="true">→</span>
-          </a>
-        </nav>
-      )}
+          Brief
+        </a>
+        <a
+          href="#unterzeichnen"
+          onClick={(e) => {
+            e.preventDefault();
+            setNavOpen(false);
+            scrollTo("unterzeichnen");
+          }}
+        >
+          Unterzeichnen
+        </a>
+        <a
+          href="#liste"
+          onClick={(e) => {
+            e.preventDefault();
+            setNavOpen(false);
+            scrollTo("liste");
+          }}
+        >
+          Unterstützer*innen
+        </a>
+        <a
+          href="#unterzeichnen"
+          className="mobile-nav-cta"
+          onClick={(e) => {
+            e.preventDefault();
+            setNavOpen(false);
+            scrollTo("unterzeichnen");
+          }}
+        >
+          Jetzt mitzeichnen <span aria-hidden="true">→</span>
+        </a>
+      </nav>
 
       <main id="main">
         <section
@@ -908,6 +909,7 @@ export default function App() {
 
             {error && (
               <p
+                role="alert"
                 style={{
                   color: "var(--rot-text)",
                   textAlign: "center",
@@ -1211,6 +1213,8 @@ function SignForm({ onSubmit, serverError }) {
   const [newsletter, setNewsletter] = useState(false);
   const [showSuggest, setShowSuggest] = useState(false);
   const [showOccSuggest, setShowOccSuggest] = useState(false);
+  const [kvActiveIndex, setKvActiveIndex] = useState(-1);
+  const [occActiveIndex, setOccActiveIndex] = useState(-1);
   const [knownOccupations, setKnownOccupations] = useState([]);
   const [knownKreisverbaende, setKnownKreisverbaende] = useState([]);
   const [errors, setErrors] = useState({});
@@ -1361,11 +1365,33 @@ function SignForm({ onSubmit, serverError }) {
           onChange={(e) => {
             setKv(e.target.value);
             setShowSuggest(true);
+            setKvActiveIndex(-1);
           }}
           onFocus={() => setShowSuggest(true)}
           onBlur={() => {
-            setTimeout(() => setShowSuggest(false), 150);
+            setTimeout(() => {
+              setShowSuggest(false);
+              setKvActiveIndex(-1);
+            }, 150);
             setKv((v) => v.replace(/^KV\s*/i, ""));
+          }}
+          onKeyDown={(e) => {
+            if (!showSuggest || !kvMatches.length) return;
+            if (e.key === "ArrowDown") {
+              e.preventDefault();
+              setKvActiveIndex((i) => Math.min(i + 1, kvMatches.length - 1));
+            } else if (e.key === "ArrowUp") {
+              e.preventDefault();
+              setKvActiveIndex((i) => Math.max(i - 1, 0));
+            } else if (e.key === "Enter" && kvActiveIndex >= 0) {
+              e.preventDefault();
+              setKv(kvMatches[kvActiveIndex]);
+              setShowSuggest(false);
+              setKvActiveIndex(-1);
+            } else if (e.key === "Escape") {
+              setShowSuggest(false);
+              setKvActiveIndex(-1);
+            }
           }}
           placeholder="z. B. Berlin-Neukölln"
           autoComplete="off"
@@ -1373,18 +1399,26 @@ function SignForm({ onSubmit, serverError }) {
           aria-expanded={showSuggest && kv && kvMatches.length > 0}
           aria-autocomplete="list"
           aria-controls="kv-listbox"
+          aria-activedescendant={
+            kvActiveIndex >= 0 ? `kv-option-${kvActiveIndex}` : undefined
+          }
         />
         {showSuggest && kv && kvMatches.length > 0 && (
           <div id="kv-listbox" role="listbox" className="autocomplete-dropdown">
-            {kvMatches.map((k) => (
+            {kvMatches.map((k, i) => (
               <div
                 key={k}
+                id={`kv-option-${i}`}
                 role="option"
+                aria-selected={i === kvActiveIndex}
                 onMouseDown={() => {
                   setKv(k);
                   setShowSuggest(false);
+                  setKvActiveIndex(-1);
                 }}
-                className="autocomplete-option"
+                className={
+                  "autocomplete-option" + (i === kvActiveIndex ? " active" : "")
+                }
               >
                 {k}
               </div>
@@ -1404,15 +1438,42 @@ function SignForm({ onSubmit, serverError }) {
           onChange={(e) => {
             setOccupation(e.target.value);
             setShowOccSuggest(true);
+            setOccActiveIndex(-1);
           }}
           onFocus={() => setShowOccSuggest(true)}
-          onBlur={() => setTimeout(() => setShowOccSuggest(false), 150)}
+          onBlur={() => {
+            setTimeout(() => {
+              setShowOccSuggest(false);
+              setOccActiveIndex(-1);
+            }, 150);
+          }}
+          onKeyDown={(e) => {
+            if (!showOccSuggest || !occMatches.length) return;
+            if (e.key === "ArrowDown") {
+              e.preventDefault();
+              setOccActiveIndex((i) => Math.min(i + 1, occMatches.length - 1));
+            } else if (e.key === "ArrowUp") {
+              e.preventDefault();
+              setOccActiveIndex((i) => Math.max(i - 1, 0));
+            } else if (e.key === "Enter" && occActiveIndex >= 0) {
+              e.preventDefault();
+              setOccupation(occMatches[occActiveIndex]);
+              setShowOccSuggest(false);
+              setOccActiveIndex(-1);
+            } else if (e.key === "Escape") {
+              setShowOccSuggest(false);
+              setOccActiveIndex(-1);
+            }
+          }}
           placeholder="z. B. Sozialarbeiter*in"
           autoComplete="off"
           role="combobox"
           aria-expanded={showOccSuggest && occupation && occMatches.length > 0}
           aria-autocomplete="list"
           aria-controls="occ-listbox"
+          aria-activedescendant={
+            occActiveIndex >= 0 ? `occ-option-${occActiveIndex}` : undefined
+          }
         />
         {showOccSuggest && occupation && occMatches.length > 0 && (
           <div
@@ -1420,15 +1481,21 @@ function SignForm({ onSubmit, serverError }) {
             role="listbox"
             className="autocomplete-dropdown"
           >
-            {occMatches.map((o) => (
+            {occMatches.map((o, i) => (
               <div
                 key={o}
+                id={`occ-option-${i}`}
                 role="option"
+                aria-selected={i === occActiveIndex}
                 onMouseDown={() => {
                   setOccupation(o);
                   setShowOccSuggest(false);
+                  setOccActiveIndex(-1);
                 }}
-                className="autocomplete-option"
+                className={
+                  "autocomplete-option" +
+                  (i === occActiveIndex ? " active" : "")
+                }
               >
                 {o}
               </div>
@@ -1782,6 +1849,26 @@ function KreisverbandMap({ kvGroups }) {
   }, [kvGroups]);
 
   const [popup, setPopup] = useState(null);
+  const popupCloseRef = useRef(null);
+  const lastFocusedRef = useRef(null);
+
+  useEffect(() => {
+    if (popup && popupCloseRef.current) {
+      popupCloseRef.current.focus();
+    } else if (!popup && lastFocusedRef.current) {
+      lastFocusedRef.current.focus();
+      lastFocusedRef.current = null;
+    }
+  }, [popup]);
+
+  useEffect(() => {
+    if (!popup) return;
+    function onKey(e) {
+      if (e.key === "Escape") setPopup(null);
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [popup]);
 
   const wrapRef = useRef(null);
   useEffect(() => {
@@ -1809,10 +1896,11 @@ function KreisverbandMap({ kvGroups }) {
     return nudgeChips(list);
   }, [clusterData]);
 
-  function handleClusterClick(chip) {
+  function handleClusterClick(chip, triggerEl) {
     if (chip.isSolo) return;
     const cl = clusterData.find((c) => c.id === chip.id);
     if (!cl) return;
+    if (triggerEl) lastFocusedRef.current = triggerEl;
     setPopup({
       id: cl.id,
       label: cl.label,
@@ -1824,66 +1912,86 @@ function KreisverbandMap({ kvGroups }) {
   }
 
   return (
-    <div className="kv-map-wrap" ref={wrapRef}>
-      <div style={{ position: "relative", width: "100%", maxWidth: 900 }} onClick={() => setPopup(null)}>
-        <svg
-          viewBox={`${MAP_VB.x} ${MAP_VB.y} ${MAP_VB.w} ${MAP_VB.h}`}
-          className="kv-map"
-          aria-hidden="true"
+    <div className="kv-map-wrap">
+      <div className="kv-map-scroll" ref={wrapRef}>
+        <div
+          style={{ position: "relative", width: "100%", maxWidth: 900 }}
           onClick={() => setPopup(null)}
         >
-          <path d={GERMANY_PATH} className="kv-map-outline" />
-          {chips.map((chip) => (
-            <g
-              key={chip.id}
-              className="kv-map-marker"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (!chip.isSolo) handleClusterClick(chip);
-              }}
-              style={!chip.isSolo ? { cursor: "pointer" } : undefined}
-            >
-              <foreignObject
-                x={chip.x}
-                y={chip.y}
-                width={chip.w + 8}
-                height={chip.h + 8}
-                style={{ overflow: "visible" }}
-              >
-                <div
-                  className={
-                    "occupation-chip occupation-chip--map" +
-                    (!chip.isSolo ? " occupation-chip--cluster" : "") +
-                    (popup && popup.id === chip.id ? " occupation-chip--active" : "")
-                  }
-                >
-                  <span className="occupation-name">{chip.name}</span>
-                  <span className="occupation-count">{chip.count}</span>
-                </div>
-              </foreignObject>
-            </g>
-          ))}
-        </svg>
-        {popup && (
-          <div
-            className="kv-map-popup"
-            style={{ left: popup.x, top: popup.y }}
-            onClick={(e) => e.stopPropagation()}
+          <svg
+            viewBox={`${MAP_VB.x} ${MAP_VB.y} ${MAP_VB.w} ${MAP_VB.h}`}
+            className="kv-map"
+            aria-hidden="true"
+            onClick={() => setPopup(null)}
           >
-            <div className="kv-map-popup-head">
-              <span>{popup.label}</span>
-              <button onClick={() => setPopup(null)} aria-label="Schließen">×</button>
+            <path d={GERMANY_PATH} className="kv-map-outline" />
+            {chips.map((chip) => (
+              <g key={chip.id} className="kv-map-marker">
+                <foreignObject
+                  x={chip.x}
+                  y={chip.y}
+                  width={chip.w + 8}
+                  height={chip.h + 8}
+                  style={{ overflow: "visible" }}
+                >
+                  {chip.isSolo ? (
+                    <div className="occupation-chip occupation-chip--map">
+                      <span className="occupation-name">{chip.name}</span>
+                      <span className="occupation-count">{chip.count}</span>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className={
+                        "occupation-chip occupation-chip--map occupation-chip--cluster" +
+                        (popup && popup.id === chip.id
+                          ? " occupation-chip--active"
+                          : "")
+                      }
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleClusterClick(chip, e.currentTarget);
+                      }}
+                      aria-label={`${chip.name}: ${chip.count} Unterschriften, Details anzeigen`}
+                      aria-expanded={popup ? popup.id === chip.id : false}
+                    >
+                      <span className="occupation-name">{chip.name}</span>
+                      <span className="occupation-count">{chip.count}</span>
+                    </button>
+                  )}
+                </foreignObject>
+              </g>
+            ))}
+          </svg>
+          {popup && (
+            <div
+              className="kv-map-popup"
+              style={{ left: popup.x, top: popup.y }}
+              onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-label={`${popup.label}: ${popup.total} Unterschriften`}
+            >
+              <div className="kv-map-popup-head">
+                <span>{popup.label}</span>
+                <button
+                  ref={popupCloseRef}
+                  onClick={() => setPopup(null)}
+                  aria-label="Schließen"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="kv-map-popup-body">
+                {popup.members.map((m) => (
+                  <div key={m.city} className="kv-map-popup-row">
+                    <span>{m.city}</span>
+                    <span className="occupation-count">{m.count}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="kv-map-popup-body">
-              {popup.members.map((m) => (
-                <div key={m.city} className="kv-map-popup-row">
-                  <span>{m.city}</span>
-                  <span className="occupation-count">{m.count}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
       {(cityData.unmapped.length > 0 || cityData.ohneCount > 0) && (
         <div className="kv-map-extras">

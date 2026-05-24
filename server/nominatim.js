@@ -1,5 +1,10 @@
-import { resolveState } from "./states.js";
-import { updateSignerState, getSignersNeedingState } from "./db.js";
+import { resolveState, addToCache } from "./states.js";
+import {
+  updateSignerState,
+  getSignersNeedingState,
+  upsertKvStateCache,
+  bulkUpdateSignerStateByKv,
+} from "./db.js";
 
 const NOMINATIM_BASE = "https://nominatim.openstreetmap.org/search";
 const USER_AGENT = "GehaltsdeckelJetzt/1.0 (kontakt@gehaltsdeckel.jetzt)";
@@ -7,6 +12,7 @@ const WORKER_INTERVAL = 5000;
 const RATE_LIMIT_MS = 1100;
 
 const queue = [];
+const processedKvs = new Set();
 let workerRunning = false;
 let lastNominatimCall = 0;
 
@@ -20,6 +26,8 @@ export function enqueueStateResolution(signerId, kreisverband) {
     );
     return;
   }
+
+  if (processedKvs.has(kreisverband)) return;
 
   queue.push({ signerId, kreisverband });
 }
@@ -59,16 +67,29 @@ async function processQueue() {
     const item = queue.shift();
     if (!item) return;
 
+    if (processedKvs.has(item.kreisverband)) {
+      const cached = resolveState(item.kreisverband);
+      if (cached) {
+        await updateSignerState(item.signerId, cached);
+      }
+      return;
+    }
+
     try {
       const state = await resolveViaNominatim(item.kreisverband);
+      processedKvs.add(item.kreisverband);
+
       if (state) {
-        await updateSignerState(item.signerId, state);
+        await upsertKvStateCache(item.kreisverband, state, "nominatim");
+        addToCache(item.kreisverband, state);
+        const updated = await bulkUpdateSignerStateByKv(item.kreisverband, state);
         console.log(
-          `[state] resolved "${item.kreisverband}" -> "${state}" (signer ${item.signerId})`,
+          `[state] resolved "${item.kreisverband}" -> "${state}" (${updated} signers updated)`,
         );
       } else {
+        await upsertKvStateCache(item.kreisverband, "", "nominatim");
         console.log(
-          `[state] no result for "${item.kreisverband}" (signer ${item.signerId})`,
+          `[state] no result for "${item.kreisverband}" (marked as checked)`,
         );
       }
     } catch (err) {
@@ -83,8 +104,23 @@ async function processQueue() {
   }
 }
 
+export function getQueueLength() {
+  return queue.length;
+}
+
+export async function triggerBackfill() {
+  const rows = await getSignersNeedingState();
+  for (const row of rows) {
+    enqueueStateResolution(row.id, row.kreisverband);
+  }
+  if (rows.length > 0) {
+    console.log(`[state] manual backfill: enqueued ${rows.length} signers`);
+  }
+  return rows.length;
+}
+
 export function startStateWorker() {
-  getSignersNeedingState(200)
+  getSignersNeedingState()
     .then((rows) => {
       for (const row of rows) {
         enqueueStateResolution(row.id, row.kreisverband);

@@ -32,6 +32,12 @@ import {
   optOutNewsletter,
   deleteSignerByUnsubscribeToken,
   getStateStats,
+  ensureKvStateCacheTable,
+  getStateResolutionStats,
+  getDistinctKreisverbands,
+  mergeKreisverband,
+  insertKvNotTypo,
+  loadKvNotTypo,
 } from "./db.js";
 import {
   sendVerificationEmail,
@@ -46,7 +52,11 @@ import { startBackupSchedule } from "./backup.js";
 import {
   enqueueStateResolution,
   startStateWorker,
+  triggerBackfill,
+  getQueueLength,
 } from "./nominatim.js";
+import { initStateCache } from "./states.js";
+import { findOutlierGroups } from "./levenshtein.js";
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
@@ -890,6 +900,82 @@ const server = Bun.serve({
         });
       },
     },
+
+    "/api/admin/resolve-states": {
+      async POST(req) {
+        return adminJson(req, async () => {
+          const enqueued = await triggerBackfill();
+          return json({ ok: true, enqueued });
+        });
+      },
+    },
+
+    "/api/admin/state-resolution-status": {
+      async GET(req) {
+        return adminJson(req, async () => {
+          const stats = await getStateResolutionStats();
+          return json({ ...stats, queueLength: getQueueLength() });
+        });
+      },
+    },
+
+    "/api/admin/kv-outliers": {
+      async GET(req) {
+        return adminJson(req, async () => {
+          const [kvs, dismissed] = await Promise.all([
+            getDistinctKreisverbands(),
+            loadKvNotTypo(),
+          ]);
+          const dismissedSet = new Set(
+            dismissed.map((d) => `${d.canonical}\0${d.outlier}`),
+          );
+          const groups = findOutlierGroups(kvs)
+            .map((g) => ({
+              ...g,
+              outliers: g.outliers.filter(
+                (o) => !dismissedSet.has(`${g.canonical.name}\0${o.name}`),
+              ),
+            }))
+            .filter((g) => g.outliers.length > 0);
+          return json(groups);
+        });
+      },
+    },
+
+    "/api/admin/merge-kv": {
+      async POST(req) {
+        return adminJson(req, async () => {
+          if (bodyTooLarge(req))
+            return json({ error: "Payload too large" }, 413);
+          const body = await req.json();
+          const from = String(body.from || "").trim();
+          const to = String(body.to || "").trim();
+          if (!from || !to || from === to) {
+            return json({ error: "Ungültige Kreisverbände" }, 400);
+          }
+          const updated = await mergeKreisverband(from, to);
+          await triggerBackfill();
+          return json({ ok: true, updated });
+        });
+      },
+    },
+
+    "/api/admin/dismiss-outlier": {
+      async POST(req) {
+        return adminJson(req, async () => {
+          if (bodyTooLarge(req))
+            return json({ error: "Payload too large" }, 413);
+          const body = await req.json();
+          const canonical = String(body.canonical || "").trim();
+          const outlier = String(body.outlier || "").trim();
+          if (!canonical || !outlier) {
+            return json({ error: "Ungültige Parameter" }, 400);
+          }
+          await insertKvNotTypo(canonical, outlier);
+          return json({ ok: true });
+        });
+      },
+    },
   },
 
   fetch(req) {
@@ -901,7 +987,13 @@ console.log(
   `Server running on ${server.url} (${isDev ? "development" : "production"})`,
 );
 startBackupSchedule();
-startStateWorker();
+ensureKvStateCacheTable()
+  .then(() => initStateCache())
+  .then(() => startStateWorker())
+  .catch((err) => {
+    console.error("[state] init failed:", err);
+    startStateWorker();
+  });
 
 function shutdown() {
   console.log("Shutting down...");

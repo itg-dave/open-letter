@@ -1,3 +1,7 @@
+import { loadKvStateCache } from "./db.js";
+
+const RESOLVED_CACHE = new Map();
+
 const KV_TO_STATE = new Map([
   ["Berlin", "Berlin"],
   ["Berlin-Neukölln", "Berlin"],
@@ -127,6 +131,20 @@ const PATTERNS = [
   [/oberland/i, "Bayern"],
 ];
 
+export async function initStateCache() {
+  const rows = await loadKvStateCache();
+  for (const row of rows) {
+    RESOLVED_CACHE.set(row.kreisverband, row.state);
+  }
+  console.log(`[state] cache loaded: ${rows.length} entries`);
+}
+
+export function addToCache(kreisverband, state) {
+  if (kreisverband && state) {
+    RESOLVED_CACHE.set(kreisverband, state);
+  }
+}
+
 export function resolveState(kreisverband) {
   if (!kreisverband) return null;
 
@@ -136,6 +154,9 @@ export function resolveState(kreisverband) {
   for (const [pattern, state] of PATTERNS) {
     if (pattern.test(kreisverband)) return state;
   }
+
+  const cached = RESOLVED_CACHE.get(kreisverband);
+  if (cached) return cached;
 
   return null;
 }
