@@ -1,55 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 
-const KREISVERBAENDE = [
-  "Berlin-Mitte",
-  "Berlin-Neukölln",
-  "Berlin-Friedrichshain-Kreuzberg",
-  "Hamburg-Altona",
-  "Hamburg-Mitte",
-  "Leipzig",
-  "Dresden",
-  "Köln",
-  "Düsseldorf",
-  "Frankfurt am Main",
-  "München",
-  "Stuttgart",
-  "Bremen",
-  "Hannover",
-  "Nürnberg",
-  "Rostock",
-  "Erfurt",
-  "Magdeburg",
-  "Kiel",
-  "Saarbrücken",
-  "Mainz",
-  "Potsdam",
-  "Aachen",
-  "Bonn",
-  "Karlsruhe",
-  "Freiburg",
-  "Heidelberg",
-  "Halle (Saale)",
-  "Jena",
-  "Chemnitz",
-  "Bielefeld",
-  "Dortmund",
-  "Essen",
-  "Duisburg",
-  "Wuppertal",
-  "Münster",
-  "Oldenburg",
-  "Göttingen",
-  "Kassel",
-  "Marburg",
-  "Tübingen",
-  "Konstanz",
-  "Regensburg",
-  "Augsburg",
-  "Würzburg",
-  "Lübeck",
-  "Flensburg",
-  "Osnabrück",
-];
 
 const MILESTONES = [
   1000, 1300, 1600, 2000, 2300, 2600, 3000, 4000, 5000, 7500, 10000,
@@ -101,6 +51,26 @@ const CITY_COORDS = {
   Lübeck: [208, 78],
   Flensburg: [155, 20],
   Osnabrück: [96, 178],
+  Braunschweig: [195, 185],
+  Mannheim: [113, 355],
+  Bochum: [72, 220],
+  Wolfenbüttel: [205, 190],
+  Darmstadt: [113, 335],
+  Lüneburg: [198, 118],
+  Erlangen: [220, 365],
+  Fürth: [218, 362],
+  Zwickau: [295, 278],
+  Esslingen: [148, 408],
+  Ludwigsburg: [138, 395],
+  Reutlingen: [140, 425],
+  Lörrach: [93, 468],
+  Brandenburg: [290, 175],
+  Ravensburg: [168, 458],
+  Wiesbaden: [103, 318],
+  Offenbach: [130, 320],
+  Pforzheim: [118, 393],
+  Hameln: [148, 195],
+  Heinsberg: [12, 260],
 };
 
 const GERMANY_PATH =
@@ -1233,6 +1203,7 @@ function SignForm({ onSubmit, serverError }) {
   const [showSuggest, setShowSuggest] = useState(false);
   const [showOccSuggest, setShowOccSuggest] = useState(false);
   const [knownOccupations, setKnownOccupations] = useState([]);
+  const [knownKreisverbaende, setKnownKreisverbaende] = useState([]);
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
 
@@ -1243,6 +1214,18 @@ function SignForm({ onSubmit, serverError }) {
         if (res.ok) {
           const data = await res.json();
           setKnownOccupations(data.map((d) => d.occupation));
+        }
+      } catch {}
+    })();
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/kreisverband-stats");
+        if (res.ok) {
+          const data = await res.json();
+          setKnownKreisverbaende(data.map((d) => d.kreisverband).filter(Boolean));
         }
       } catch {}
     })();
@@ -1259,11 +1242,10 @@ function SignForm({ onSubmit, serverError }) {
   const kvMatches = useMemo(() => {
     if (!kv) return [];
     const q = kv.toLowerCase();
-    return KREISVERBAENDE.filter((k) => k.toLowerCase().includes(q)).slice(
-      0,
-      6,
-    );
-  }, [kv]);
+    return knownKreisverbaende
+      .filter((k) => k.toLowerCase().includes(q))
+      .slice(0, 6);
+  }, [kv, knownKreisverbaende]);
 
   function validate() {
     const e = {};
@@ -1484,9 +1466,175 @@ function SignForm({ onSubmit, serverError }) {
   );
 }
 
+const BERLIN_DISTRICTS = new Set([
+  "Spandau", "Lichtenberg", "Tempelhof-Schöneberg",
+  "Treptow-Köpenick", "Treptow Köpenick", "Moabit",
+  "Pankow", "Marzahn-Hellersdorf",
+]);
+
+const REGION_MAP = {
+  "Region Hannover": "Hannover",
+  "Bodenseekreis": "Konstanz",
+  "Calw-Freudenstadt": "Stuttgart",
+  "Sigmaringen-Zollernalb": "Tübingen",
+  "Breisgau-Hochschwarzwald": "Freiburg",
+  "Ortenau": "Freiburg",
+  "Waldshut": "Lörrach",
+  "Ilm-Kreis": "Erfurt",
+  "Lahn-Dill Kreis": "Marburg",
+  "Traunstein-BGL": "München",
+  "Uckermark": "Potsdam",
+  "Allgäu": "Augsburg",
+};
+
+function resolveCity(kv) {
+  if (kv === "Ohne Kreisverband") return null;
+
+  // Exact match
+  if (CITY_COORDS[kv]) return kv;
+
+  // Region lookup
+  if (REGION_MAP[kv]) return REGION_MAP[kv];
+
+  // Berlin variants
+  if (/^(Berlin|BV Berlin|SDS.*(Berlin|Tu berlin))/i.test(kv)) return "Berlin";
+  if (BERLIN_DISTRICTS.has(kv)) return "Berlin";
+  if (/^Stellvertretende.*Berlin/i.test(kv)) return "Berlin";
+
+  // Hamburg variants
+  if (/^Hamburg/i.test(kv)) return "Hamburg";
+
+  // Leipzig variants
+  if (/^(Leipzig|SDS Leipzig)/i.test(kv)) return "Leipzig";
+
+  // Köln variants (including typo Kõln)
+  if (/^K[öõ]ln/i.test(kv)) return "Köln";
+
+  // Bremen variants
+  if (/^Bremen/i.test(kv)) return "Bremen";
+
+  // Stuttgart variants
+  if (/^Stuttgart/i.test(kv)) return "Stuttgart";
+
+  // Mainz variants
+  if (/^Mainz/i.test(kv)) return "Mainz";
+
+  // Magdeburg variants
+  if (/Magdeburg/i.test(kv)) return "Magdeburg";
+
+  // Halle variants
+  if (/^Halle/i.test(kv)) return "Halle (Saale)";
+
+  // Heidelberg variants
+  if (/^Heidelberg/i.test(kv)) return "Heidelberg";
+
+  // Rhein-Sieg area → Bonn
+  if (/^Rhein.?Sieg/i.test(kv)) return "Bonn";
+
+  // Ostalb / Ostalbkreis / typo Osralb
+  if (/^Os[tr]alb/i.test(kv)) return "Stuttgart";
+
+  // Pforzheim / Enzkreis
+  if (/^Pforzheim/i.test(kv)) return "Pforzheim";
+
+  // Erlangen variants
+  if (/^Erlangen/i.test(kv)) return "Erlangen";
+
+  // Hameln variants
+  if (/^Hameln/i.test(kv)) return "Hameln";
+
+  // Offenbach variants
+  if (/^Offenbach/i.test(kv) || /^Rodgau/i.test(kv)) return "Offenbach";
+
+  // Heinsberg
+  if (/^Heinsberg/i.test(kv)) return "Aachen";
+
+  // Rhein-Hardt / Rhein-Lahn
+  if (/^Rhein.?Hardt/i.test(kv) || /^Rhein.?Lahn/i.test(kv)) return "Mainz";
+
+  // Brandenburg(Havel)
+  if (/^Brandenburg/i.test(kv)) return "Brandenburg";
+
+  // Aalen → near Stuttgart
+  if (/^Aalen/i.test(kv)) return "Stuttgart";
+
+  // SDS chapters without city prefix
+  if (/^SDS\s/i.test(kv)) return null;
+
+  // Stellvertretende etc. — organizational, not geographic
+  if (/^Stellvertretende/i.test(kv)) return null;
+
+  if (/oberberg/i.test(kv)) return "Köln";       // Oberbergischer Kreis → NRW
+  if (/oberland/i.test(kv)) return "München";    // Oberland → Bayern
+
+  return null;
+}
+
+const CLUSTERS = [
+  { id: "nrw", label: "NRW", center: [55, 230], cities: ["Köln", "Düsseldorf", "Aachen", "Bonn", "Bielefeld", "Dortmund", "Essen", "Duisburg", "Wuppertal", "Münster", "Bochum", "Heinsberg"] },
+  { id: "bawue", label: "Baden-Württemberg", center: [125, 420], cities: ["Stuttgart", "Karlsruhe", "Freiburg", "Heidelberg", "Tübingen", "Konstanz", "Mannheim", "Esslingen", "Ludwigsburg", "Reutlingen", "Lörrach", "Ravensburg", "Pforzheim"] },
+  { id: "bayern", label: "Bayern", center: [230, 395], cities: ["München", "Nürnberg", "Regensburg", "Augsburg", "Würzburg", "Erlangen", "Fürth"] },
+  { id: "niedersachsen", label: "Niedersachsen", center: [150, 165], cities: ["Hannover", "Oldenburg", "Göttingen", "Osnabrück", "Braunschweig", "Wolfenbüttel", "Lüneburg", "Hameln"] },
+  { id: "hessen", label: "Hessen", center: [128, 295], cities: ["Frankfurt am Main", "Kassel", "Marburg", "Darmstadt", "Wiesbaden", "Offenbach"] },
+  { id: "sachsen", label: "Sachsen", center: [305, 260], cities: ["Leipzig", "Dresden", "Chemnitz", "Zwickau"] },
+  { id: "berlin", label: "Berlin", center: [323, 163], cities: ["Berlin"] },
+  { id: "brandenburg", label: "Brandenburg", center: [290, 185], cities: ["Potsdam", "Brandenburg"] },
+  { id: "hamburg", label: "Hamburg", center: [179, 98], cities: ["Hamburg"] },
+  { id: "bremen", label: "Bremen", center: [128, 128], cities: ["Bremen"] },
+  { id: "sh", label: "Schleswig-Holstein", center: [175, 48], cities: ["Kiel", "Lübeck", "Flensburg"] },
+  { id: "thueringen", label: "Thüringen", center: [228, 270], cities: ["Erfurt", "Jena"] },
+  { id: "sachsen-anhalt", label: "Sachsen-Anhalt", center: [255, 205], cities: ["Magdeburg", "Halle (Saale)"] },
+  { id: "mv", label: "Meckl.-Vorpommern", center: [268, 64], cities: ["Rostock"] },
+  { id: "rlp", label: "Rheinland-Pfalz", center: [97, 323], cities: ["Mainz"] },
+  { id: "saarland", label: "Saarland", center: [51, 371], cities: ["Saarbrücken"] },
+];
+
+function chipPos(name, count, coords) {
+  const [cx, cy] = coords || CITY_COORDS[name] || [0, 0];
+  const CHIP_H = 16;
+  const nameW = name.length * 5 + 23;
+  const countW = Math.max(String(count).length * 4.5 + 10, 13);
+  const chipW = nameW + countW;
+  const chipX = cx < 180 ? cx - 16 : cx > 280 ? cx - chipW + 16 : cx - chipW / 2;
+  const chipY = cy - CHIP_H / 2;
+  return { name, count, cx, cy, x: chipX, y: chipY, w: chipW, h: CHIP_H };
+}
+
+function nudgeChips(chips, maxNudge = 150) {
+  const GAP = 10;
+  const placed = [];
+  for (const chip of chips) {
+    const overlaps = (ty) =>
+      placed.some(
+        (p) =>
+          chip.x < p.x + p.w + GAP &&
+          chip.x + chip.w + GAP > p.x &&
+          ty < p.y + p.h + GAP &&
+          ty + chip.h + GAP > p.y,
+      );
+    if (!overlaps(chip.y)) {
+      placed.push(chip);
+      continue;
+    }
+    let bestUp = null;
+    let bestDown = null;
+    for (let dy = 1; dy <= maxNudge; dy++) {
+      if (bestUp === null && !overlaps(chip.y - dy)) bestUp = chip.y - dy;
+      if (bestDown === null && !overlaps(chip.y + dy)) bestDown = chip.y + dy;
+      if (bestUp !== null && bestDown !== null) break;
+    }
+    const distUp = bestUp !== null ? Math.abs(chip.y - bestUp) : Infinity;
+    const distDown = bestDown !== null ? Math.abs(chip.y - bestDown) : Infinity;
+    chip.y = distUp <= distDown ? bestUp : bestDown;
+    placed.push(chip);
+  }
+  return chips;
+}
+
 function KreisverbandMap({ kvGroups }) {
   const cityData = useMemo(() => {
     const cities = {};
+    const unmapped = [];
     let ohneCount = 0;
     let total = 0;
     for (const g of kvGroups) {
@@ -1495,136 +1643,124 @@ function KreisverbandMap({ kvGroups }) {
         ohneCount = g.count;
         continue;
       }
-      const city = g.kreisverband.startsWith("Berlin-")
-        ? "Berlin"
-        : g.kreisverband.startsWith("Hamburg-")
-          ? "Hamburg"
-          : g.kreisverband;
-      if (!CITY_COORDS[city]) continue;
-      cities[city] = (cities[city] || 0) + g.count;
+      const city = resolveCity(g.kreisverband);
+      if (city && CITY_COORDS[city]) {
+        cities[city] = (cities[city] || 0) + g.count;
+      } else {
+        unmapped.push(g);
+      }
     }
-    return { cities, ohneCount, total };
+    return { cities, unmapped, ohneCount, total };
   }, [kvGroups]);
 
-  const entries = Object.entries(cityData.cities).sort((a, b) => b[1] - a[1]);
+  const [expanded, setExpanded] = useState(null);
 
-  const resolvedChips = useMemo(() => {
-    const GAP = 4;
-    const CHIP_H = 16;
-    const chips = entries.map(([city, count]) => {
-      const [cx, cy] = CITY_COORDS[city];
-      const nameW = city.length * 4 + 24;
-      const countW = Math.max(String(count).length * 4 + 12, 16);
-      const chipW = nameW + countW;
-      const chipX =
-        cx < 180
-          ? cx - 12
-          : cx > 280
-            ? cx - chipW + 12
-            : cx - chipW / 2;
-      const chipY = cy - CHIP_H - 6;
-      return { city, count, cx, cy, x: chipX, y: chipY, w: chipW, h: CHIP_H, nameW, countW };
-    });
+  const clusterData = useMemo(() => {
+    return CLUSTERS.map((cl) => {
+      const members = cl.cities
+        .filter((c) => cityData.cities[c])
+        .map((c) => ({ city: c, count: cityData.cities[c] }));
+      const total = members.reduce((s, m) => s + m.count, 0);
+      return { ...cl, members, total };
+    }).filter((cl) => cl.total > 0);
+  }, [cityData.cities]);
 
-    const placed = [];
-    for (const chip of chips) {
-      const overlaps = (ty) =>
-        placed.some(
-          (p) =>
-            chip.x < p.x + p.w + GAP &&
-            chip.x + chip.w + GAP > p.x &&
-            ty < p.y + p.h + GAP &&
-            ty + chip.h + GAP > p.y,
-        );
+  const collapsedChips = useMemo(() => {
+    const chips = clusterData
+      .filter((cl) => cl.id !== expanded)
+      .map((cl) => {
+        const isSolo = cl.cities.length === 1;
+        const center = isSolo ? CITY_COORDS[cl.cities[0]] : cl.center;
+        const label = isSolo ? cl.cities[0] : cl.label;
+        return { ...chipPos(label, cl.total, center), id: cl.id, isSolo };
+      });
+    return nudgeChips(chips);
+  }, [clusterData, expanded]);
 
-      if (!overlaps(chip.y)) {
-        placed.push(chip);
-        continue;
-      }
-
-      let bestUp = null;
-      let bestDown = null;
-      for (let dy = 1; dy <= 300; dy++) {
-        if (bestUp === null && !overlaps(chip.y - dy)) bestUp = chip.y - dy;
-        if (bestDown === null && !overlaps(chip.y + dy)) bestDown = chip.y + dy;
-        if (bestUp !== null && bestDown !== null) break;
-      }
-
-      const distUp = bestUp !== null ? Math.abs(chip.y - bestUp) : Infinity;
-      const distDown = bestDown !== null ? Math.abs(chip.y - bestDown) : Infinity;
-      chip.y = distUp <= distDown ? bestUp : bestDown;
-      placed.push(chip);
-    }
-
-    return chips;
-  }, [entries]);
-
-  const [hovered, setHovered] = useState(null);
-  const renderChips = hovered
-    ? [...resolvedChips].sort((a, b) =>
-        a.city === hovered ? 1 : b.city === hovered ? -1 : 0,
-      )
-    : resolvedChips;
-
-  const minY = Math.min(-30, ...resolvedChips.map((c) => c.y - 5));
-  const maxY = Math.max(510, ...resolvedChips.map((c) => c.y + c.h + 10));
+  const expandedChips = useMemo(() => {
+    if (!expanded) return [];
+    const cl = clusterData.find((c) => c.id === expanded);
+    if (!cl) return [];
+    const chips = cl.members
+      .sort((a, b) => b.count - a.count)
+      .map((m) => chipPos(m.city, m.count));
+    return nudgeChips(chips);
+  }, [expanded, clusterData]);
 
   return (
     <div className="kv-map-wrap">
       <svg
-        viewBox={`-60 ${minY} 520 ${maxY - minY + 30}`}
+        viewBox="-60 -10 520 520"
         className="kv-map"
         aria-hidden="true"
+        onClick={(e) => {
+          if (e.target.closest(".kv-map-marker")) return;
+          setExpanded(null);
+        }}
       >
         <path d={GERMANY_PATH} className="kv-map-outline" />
-        {renderChips.map((chip) => {
-          const {
-            city,
-            count,
-            cx,
-            cy,
-            x: chipX,
-            y: chipY,
-            w: chipW,
-            h: chipH,
-          } = chip;
-          return (
-            <g
-              key={city}
-              className="kv-map-marker"
-              onMouseEnter={() => setHovered(city)}
-              onMouseLeave={() => setHovered(null)}
+        {collapsedChips.map((chip) => (
+          <g
+            key={chip.id}
+            className="kv-map-marker"
+            onClick={(e) => {
+              if (!chip.isSolo) {
+                e.stopPropagation();
+                setExpanded(expanded === chip.id ? null : chip.id);
+              }
+            }}
+            style={!chip.isSolo ? { cursor: "pointer" } : undefined}
+          >
+            <foreignObject
+              x={chip.x}
+              y={chip.y}
+              width={chip.w + 8}
+              height={chip.h + 8}
+              style={{ overflow: "visible" }}
             >
-              <title>
-                {city}: {count}
-              </title>
-              <line
-                x1={cx}
-                y1={cy}
-                x2={cx}
-                y2={chipY + chipH}
-                className="kv-map-leader"
-              />
-              <foreignObject
-                x={chipX}
-                y={chipY}
-                width={chipW + 8}
-                height={chipH + 8}
-                style={{ overflow: "visible" }}
+              <div
+                className={
+                  "occupation-chip occupation-chip--map" +
+                  (!chip.isSolo ? " occupation-chip--cluster" : "")
+                }
               >
-                <div className="occupation-chip occupation-chip--map">
-                  <span className="occupation-name">{city}</span>
-                  <span className="occupation-count">{count}</span>
-                </div>
-              </foreignObject>
-            </g>
-          );
-        })}
+                <span className="occupation-name">{chip.name}</span>
+                <span className="occupation-count">{chip.count}</span>
+              </div>
+            </foreignObject>
+          </g>
+        ))}
+        {expandedChips.map((chip) => (
+          <g key={chip.name} className="kv-map-marker">
+            <foreignObject
+              x={chip.x}
+              y={chip.y}
+              width={chip.w + 8}
+              height={chip.h + 8}
+              style={{ overflow: "visible" }}
+            >
+              <div className="occupation-chip occupation-chip--map">
+                <span className="occupation-name">{chip.name}</span>
+                <span className="occupation-count">{chip.count}</span>
+              </div>
+            </foreignObject>
+          </g>
+        ))}
       </svg>
-      {cityData.ohneCount > 0 && (
-        <div className="kv-map-note">
-          <span className="kv-map-note-label">Ohne Kreisverband</span>
-          <span className="kv-map-note-count">{cityData.ohneCount}</span>
+      {(cityData.unmapped.length > 0 || cityData.ohneCount > 0) && (
+        <div className="kv-map-extras">
+          {cityData.unmapped.map((g) => (
+            <div key={g.kreisverband} className="occupation-chip">
+              <span className="occupation-name">{g.kreisverband}</span>
+              <span className="occupation-count">{g.count}</span>
+            </div>
+          ))}
+          {cityData.ohneCount > 0 && (
+            <div className="occupation-chip">
+              <span className="occupation-name">Ohne Kreisverband</span>
+              <span className="occupation-count">{cityData.ohneCount}</span>
+            </div>
+          )}
         </div>
       )}
     </div>
