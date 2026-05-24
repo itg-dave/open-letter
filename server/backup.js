@@ -13,9 +13,24 @@ async function runBackup() {
   try {
     await mkdir(BACKUP_DIR, { recursive: true });
 
-    const proc = Bun.spawn(["pg_dump", "--format=custom", DATABASE_URL], {
+    // Parse the URL so credentials are passed via the environment only,
+    // keeping the password out of the process argument list (visible in `ps`).
+    const dbUrl = new URL(DATABASE_URL);
+    const pgArgs = ["pg_dump", "--format=custom"];
+    if (dbUrl.hostname) pgArgs.push("--host", dbUrl.hostname);
+    if (dbUrl.port) pgArgs.push("--port", dbUrl.port);
+    if (dbUrl.username)
+      pgArgs.push("--username", decodeURIComponent(dbUrl.username));
+    const dbName = decodeURIComponent(dbUrl.pathname.replace(/^\//, ""));
+    if (dbName) pgArgs.push(dbName);
+
+    const proc = Bun.spawn(pgArgs, {
       stdout: Bun.file(file),
       stderr: "pipe",
+      env: {
+        ...process.env,
+        PGPASSWORD: decodeURIComponent(dbUrl.password || ""),
+      },
     });
 
     const [exitCode, errText] = await Promise.all([

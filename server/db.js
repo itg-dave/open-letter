@@ -23,41 +23,39 @@ export async function getSigners({
   limit = Math.min(Math.max(1, limit), 100);
   offset = Math.max(0, offset);
 
-  const conditions = [`s.verified = TRUE`, `s.show_publicly = TRUE`];
-  const params = [];
+  const searchParam = search.trim() ? `%${search.trim().toLowerCase()}%` : null;
+  const sortDir = sort === "asc" ? sql`ASC` : sql`DESC`;
 
-  if (filter === "heute") {
-    conditions.push(`s.created_at > NOW() - INTERVAL '24 hours'`);
-  } else if (filter === "kv") {
-    conditions.push(`s.kreisverband != ''`);
-  }
+  const filterClause =
+    filter === "heute"
+      ? sql`AND s.created_at > NOW() - INTERVAL '24 hours'`
+      : filter === "kv"
+        ? sql`AND s.kreisverband != ''`
+        : sql``;
 
-  if (search.trim()) {
-    params.push(`%${search.trim().toLowerCase()}%`);
-    conditions.push(
-      `(LOWER(s.name) LIKE $${params.length} OR LOWER(s.kreisverband) LIKE $${params.length} OR LOWER(s.occupation) LIKE $${params.length})`,
-    );
-  }
+  const searchClause = searchParam
+    ? sql`AND (LOWER(s.name) LIKE ${searchParam} OR LOWER(s.kreisverband) LIKE ${searchParam} OR LOWER(s.occupation) LIKE ${searchParam})`
+    : sql``;
 
-  const where = conditions.join(" AND ");
-  const sortDirection = sort === "asc" ? "ASC" : "DESC";
+  const [{ total }] = await sql`
+    SELECT COUNT(*)::int AS total
+    FROM signers s
+    WHERE s.verified = TRUE AND s.show_publicly = TRUE
+    ${filterClause}
+    ${searchClause}
+  `;
 
-  const countResult = await sql.unsafe(
-    `SELECT COUNT(*)::int AS total FROM signers s WHERE ${where}`,
-    params,
-  );
+  const signers = await sql`
+    SELECT s.id, s.name, s.kreisverband, s.occupation, s.created_at
+    FROM signers s
+    WHERE s.verified = TRUE AND s.show_publicly = TRUE
+    ${filterClause}
+    ${searchClause}
+    ORDER BY s.created_at ${sortDir}
+    LIMIT ${limit} OFFSET ${offset}
+  `;
 
-  params.push(limit, offset);
-  const signers = await sql.unsafe(
-    `SELECT s.id, s.name, s.kreisverband, s.occupation, s.created_at
-     FROM signers s
-     WHERE ${where}
-     ORDER BY s.created_at ${sortDirection}
-     LIMIT $${params.length - 1} OFFSET $${params.length}`,
-    params,
-  );
-
-  return { signers, total: countResult[0].total };
+  return { signers, total };
 }
 
 export async function getStats() {
@@ -94,7 +92,7 @@ export async function insertSigner({
 }) {
   const result = await sql`
     INSERT INTO signers (name, email, kreisverband, occupation, newsletter, show_publicly, verification_token, token_expires_at)
-    VALUES (${name}, ${email}, ${kv}, ${occupation || ''}, ${newsletter}, ${showPublicly}, ${token}, ${expiresAt})
+    VALUES (${name}, ${email}, ${kv}, ${occupation || ""}, ${newsletter}, ${showPublicly}, ${token}, ${expiresAt})
     ON CONFLICT (email) DO UPDATE
       SET name = EXCLUDED.name,
           kreisverband = EXCLUDED.kreisverband,
@@ -322,6 +320,7 @@ export async function getUnsubscribeState(token) {
     SELECT id, email, newsletter, verified
     FROM signers
     WHERE unsubscribe_token = ${token}
+      AND unsubscribe_token_created_at > NOW() - INTERVAL '90 days'
   `;
   return signer || null;
 }
@@ -333,6 +332,7 @@ export async function optOutNewsletter(token) {
         unsubscribe_token = NULL,
         unsubscribe_token_created_at = NULL
     WHERE unsubscribe_token = ${token}
+      AND unsubscribe_token_created_at > NOW() - INTERVAL '90 days'
     RETURNING id
   `;
   return Boolean(signer);
@@ -342,6 +342,7 @@ export async function deleteSignerByUnsubscribeToken(token) {
   const [signer] = await sql`
     DELETE FROM signers
     WHERE unsubscribe_token = ${token}
+      AND unsubscribe_token_created_at > NOW() - INTERVAL '90 days'
     RETURNING id
   `;
   return Boolean(signer);
@@ -377,7 +378,11 @@ export async function getOccupations() {
         g.label = row.occupation;
       }
     } else {
-      groups.set(key, { label: row.occupation, count: row.count, maxCount: row.count });
+      groups.set(key, {
+        label: row.occupation,
+        count: row.count,
+        maxCount: row.count,
+      });
     }
   }
   return [...groups.values()]

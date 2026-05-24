@@ -52,6 +52,7 @@ const ALLOWED_ORIGINS = new Set(
     .filter(Boolean),
 );
 const isDev = process.env.NODE_ENV !== "production";
+const TRUST_PROXY = process.env.TRUST_PROXY === "true";
 
 const ADMIN_PATH = normalizeAdminPath(process.env.ADMIN_PATH);
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
@@ -60,6 +61,14 @@ const ADMIN_JWT_SECRET = process.env.ADMIN_JWT_SECRET || "";
 if (!ADMIN_PATH || !ADMIN_PASSWORD || !ADMIN_JWT_SECRET) {
   throw new Error(
     "ADMIN_PATH, ADMIN_PASSWORD, and ADMIN_JWT_SECRET must be set.",
+  );
+}
+if (ADMIN_JWT_SECRET.length < 32) {
+  throw new Error("ADMIN_JWT_SECRET must be at least 32 characters long.");
+}
+if (!isDev && !TRUST_PROXY) {
+  console.warn(
+    "[security] TRUST_PROXY is not set — set TRUST_PROXY=true when running behind a reverse proxy for accurate IP rate-limiting.",
   );
 }
 
@@ -127,20 +136,31 @@ const securityHeaders = {
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
   "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Permissions-Policy": "geolocation=(), camera=(), microphone=()",
   ...(isDev
     ? {}
     : {
         "Content-Security-Policy":
           "default-src 'self'; font-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; connect-src 'self'; frame-src 'self' about:",
+        "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
       }),
 };
 
 function getClientIp(req) {
-  return (
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    req.headers.get("x-real-ip") ||
-    "unknown"
-  );
+  if (TRUST_PROXY) {
+    return (
+      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      req.headers.get("x-real-ip") ||
+      "unknown"
+    );
+  }
+  return req.headers.get("x-real-ip") || "unknown";
+}
+
+const MAX_BODY_BYTES = 128 * 1024;
+function bodyTooLarge(req) {
+  const len = parseInt(req.headers.get("content-length") || "0", 10);
+  return len > MAX_BODY_BYTES;
 }
 
 async function constantTimePasswordMatches(submitted) {
@@ -370,6 +390,8 @@ const server = Bun.serve({
             );
           }
 
+          if (bodyTooLarge(req))
+            return json({ error: "Payload too large" }, 413);
           const body = await req.json();
           const name = sanitize(body.name);
           const email = sanitizeEmail(body.email);
@@ -446,6 +468,8 @@ const server = Bun.serve({
             );
           }
 
+          if (bodyTooLarge(req))
+            return json({ error: "Payload too large" }, 413);
           const body = await req.json();
           const email = sanitizeEmail(body.email);
           if (!isValidEmail(email)) return json({ ok: true });
@@ -507,6 +531,8 @@ const server = Bun.serve({
             });
           }
 
+          if (bodyTooLarge(req))
+            return json({ error: "Payload too large" }, 413);
           const body = await req.json();
           const email = sanitizeEmail(body.email);
 
@@ -614,6 +640,8 @@ const server = Bun.serve({
             });
           }
 
+          if (bodyTooLarge(req))
+            return json({ error: "Payload too large" }, 413);
           const body = await req.json();
           const ok = await constantTimePasswordMatches(body.password);
           if (!ok) return json({ error: "Unauthorized" }, 401);
@@ -632,6 +660,8 @@ const server = Bun.serve({
       },
       async POST(req) {
         return adminJson(req, async () => {
+          if (bodyTooLarge(req))
+            return json({ error: "Payload too large" }, 413);
           const body = await req.json();
           const name = sanitize(body.name, 120);
           const subject = sanitize(body.subject, 240);
@@ -657,6 +687,8 @@ const server = Bun.serve({
       },
       async PUT(req) {
         return adminJson(req, async () => {
+          if (bodyTooLarge(req))
+            return json({ error: "Payload too large" }, 413);
           const body = await req.json();
           const subject = sanitize(body.subject, 240);
           const htmlBody = sanitizeHtml(body.html_body);
@@ -690,6 +722,8 @@ const server = Bun.serve({
       },
       async POST(req) {
         return adminJson(req, async () => {
+          if (bodyTooLarge(req))
+            return json({ error: "Payload too large" }, 413);
           const body = await req.json();
           const templateId = parseInt(body.template_id, 10);
           const subject = sanitize(body.subject, 240);
@@ -727,6 +761,8 @@ const server = Bun.serve({
     "/api/admin/preview": {
       async POST(req) {
         return adminJson(req, async () => {
+          if (bodyTooLarge(req))
+            return json({ error: "Payload too large" }, 413);
           const body = await req.json();
           return json({
             html: renderEmailHtml(sanitizeHtml(body.html_body), {
@@ -744,10 +780,12 @@ const server = Bun.serve({
     "/api/admin/test-send": {
       async POST(req) {
         return adminJson(req, async () => {
+          if (bodyTooLarge(req))
+            return json({ error: "Payload too large" }, 413);
           const body = await req.json();
           const to = String(body.to || "").trim();
           const templateId = parseInt(body.template_id, 10);
-          if (!to || !to.includes("@")) {
+          if (!to || !isValidEmail(to)) {
             return json({ error: "Ungültige E-Mail-Adresse" }, 400);
           }
           if (!templateId) {
