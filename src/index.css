@@ -25,6 +25,10 @@
   --ls-wide: 0.08em;
   --ls-caps: 0.12em;
   --overlay-bg: rgba(0, 0, 0, 0.45);
+  --shadow-sm: 8px;
+  --shadow-md: 10px;
+  --shadow-ml: 12px;
+  --shadow-lg: 14px;
 }
 
 * {
@@ -367,7 +371,7 @@ h1.headline .banner {
   display: inline-block;
   padding: 18px 24px;
   border: 1.5px solid var(--akzent);
-  box-shadow: 10px 10px 0 var(--rot);
+  box-shadow: var(--shadow-md) var(--shadow-md) 0 var(--rot);
 }
 
 .hero-row {
@@ -394,7 +398,7 @@ h1.headline .banner {
   flex-direction: column;
   gap: 6px;
   border: 1px solid var(--akzent);
-  box-shadow: 10px 10px 0 var(--rot);
+  box-shadow: var(--shadow-md) var(--shadow-md) 0 var(--rot);
 }
 
 .counter-card .label {
@@ -555,7 +559,7 @@ h1.headline .banner {
   background: var(--fond);
   padding: 56px 64px;
   border: 1px solid var(--akzent);
-  box-shadow: 12px 12px 0 var(--akzent);
+  box-shadow: var(--shadow-ml) var(--shadow-ml) 0 var(--akzent);
   position: relative;
 }
 
@@ -790,7 +794,7 @@ h1.headline .banner {
   background: var(--fond);
   border: 1px solid var(--akzent);
   padding: 36px;
-  box-shadow: 14px 14px 0 var(--rot);
+  box-shadow: var(--shadow-lg) var(--shadow-lg) 0 var(--rot);
   position: relative;
 }
 
@@ -1202,7 +1206,7 @@ h1.headline .banner {
     transform: scale(0);
   }
   60% {
-    transform: scale(1.15);
+    transform: scale(1.06);
   }
   100% {
     transform: scale(1);
@@ -1620,7 +1624,7 @@ h1.headline .banner {
   transform: translate(-50%, calc(-100% - 10px));
   background: var(--weiss);
   border: 1px solid var(--akzent);
-  box-shadow: 8px 8px 0 var(--akzent);
+  box-shadow: var(--shadow-sm) var(--shadow-sm) 0 var(--akzent);
   min-width: 180px;
   max-width: 260px;
   animation: map-popup 0.2s cubic-bezier(0.2, 0.7, 0.2, 1) both;
@@ -1865,7 +1869,7 @@ footer {
 
 @media (max-width: 520px) {
   .modal {
-    box-shadow: 8px 8px 0 var(--akzent);
+    box-shadow: var(--shadow-sm) var(--shadow-sm) 0 var(--akzent);
     margin: 0 8px;
   }
 }

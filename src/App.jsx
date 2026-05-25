@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback, memo } from "react";
 
 const MILESTONES = [
   1000, 1300, 1600, 2000, 2300, 2600, 3000, 4000, 5000, 7500, 10000,
@@ -219,6 +219,8 @@ export default function App() {
   const [showKreisverband, setShowKreisverband] = useState(false);
   const [showMap, setShowMap] = useState(false);
   const [kvGroups, setKvGroups] = useState([]);
+  const [signFormKvNames, setSignFormKvNames] = useState([]);
+  const [signFormOccNames, setSignFormOccNames] = useState([]);
 
   const emailTrapRef = useFocusTrap(!!emailModal);
   const successTrapRef = useFocusTrap(showSuccess);
@@ -261,6 +263,25 @@ export default function App() {
     fetchStats();
     fetchSigners("alle", "", 0, false);
   }, [fetchStats, fetchSigners]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [kvRes, occRes] = await Promise.all([
+          fetch("/api/kreisverband-stats"),
+          fetch("/api/occupations"),
+        ]);
+        if (kvRes.ok) {
+          const kvData = await kvRes.json();
+          setSignFormKvNames(kvData.map((d) => d.kreisverband).filter(Boolean));
+        }
+        if (occRes.ok) {
+          const occData = await occRes.json();
+          setSignFormOccNames(occData.map((d) => d.occupation));
+        }
+      } catch {}
+    })();
+  }, []);
 
   useEffect(() => {
     const interval = setInterval(async () => {
@@ -351,7 +372,7 @@ export default function App() {
     fetchSigners(filter, search, next, true);
   }
 
-  async function handleSubmit(data) {
+  const handleSubmit = useCallback(async (data) => {
     setSubmitError(null);
     try {
       const res = await fetch("/api/sign", {
@@ -375,7 +396,7 @@ export default function App() {
     } catch {
       setSubmitError("Verbindung fehlgeschlagen. Bitte versuche es erneut.");
     }
-  }
+  }, []);
 
   useEffect(() => {
     if (!emailModal) {
@@ -768,7 +789,12 @@ export default function App() {
                 </p>
               </div>
 
-              <SignForm onSubmit={handleSubmit} serverError={submitError} />
+              <SignForm
+                onSubmit={handleSubmit}
+                serverError={submitError}
+                kvNames={signFormKvNames}
+                occNames={signFormOccNames}
+              />
             </div>
           </div>
         </section>
@@ -958,21 +984,13 @@ export default function App() {
               <>
                 <div className="signers-grid">
                   {signers.map((s) => (
-                    <div
+                    <SignerRow
                       key={s.id}
-                      className={"signer" + (s._isNew ? " new" : "")}
-                    >
-                      <div className="avatar">{initials(s.name)}</div>
-                      <div className="info">
-                        <div className="name">{s.name}</div>
-                        <div className="kv">
-                          {s.kreisverband
-                            ? "KV " + s.kreisverband
-                            : "Ohne Kreisverband"}
-                        </div>
-                      </div>
-                      <div className="time">vor {relTime(s.created_at)}</div>
-                    </div>
+                      name={s.name}
+                      kreisverband={s.kreisverband}
+                      createdAt={s.created_at}
+                      isNew={s._isNew}
+                    />
                   ))}
                 </div>
 
@@ -1204,7 +1222,32 @@ export default function App() {
   );
 }
 
-function SignForm({ onSubmit, serverError }) {
+const SignerRow = memo(function SignerRow({
+  name,
+  kreisverband,
+  createdAt,
+  isNew,
+}) {
+  return (
+    <div className={"signer" + (isNew ? " new" : "")}>
+      <div className="avatar">{initials(name)}</div>
+      <div className="info">
+        <div className="name">{name}</div>
+        <div className="kv">
+          {kreisverband ? "KV " + kreisverband : "Ohne Kreisverband"}
+        </div>
+      </div>
+      <div className="time">vor {relTime(createdAt)}</div>
+    </div>
+  );
+});
+
+const SignForm = memo(function SignForm({
+  onSubmit,
+  serverError,
+  kvNames,
+  occNames,
+}) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [kv, setKv] = useState("");
@@ -1215,52 +1258,26 @@ function SignForm({ onSubmit, serverError }) {
   const [showOccSuggest, setShowOccSuggest] = useState(false);
   const [kvActiveIndex, setKvActiveIndex] = useState(-1);
   const [occActiveIndex, setOccActiveIndex] = useState(-1);
-  const [knownOccupations, setKnownOccupations] = useState([]);
-  const [knownKreisverbaende, setKnownKreisverbaende] = useState([]);
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch("/api/occupations");
-        if (res.ok) {
-          const data = await res.json();
-          setKnownOccupations(data.map((d) => d.occupation));
-        }
-      } catch {}
-    })();
-  }, []);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch("/api/kreisverband-stats");
-        if (res.ok) {
-          const data = await res.json();
-          setKnownKreisverbaende(
-            data.map((d) => d.kreisverband).filter(Boolean),
-          );
-        }
-      } catch {}
-    })();
-  }, []);
+  const nameRef = useRef(null);
+  const emailRef = useRef(null);
+  const kvInputRef = useRef(null);
+  const occInputRef = useRef(null);
 
   const occMatches = useMemo(() => {
     if (!occupation) return [];
     const q = occupation.toLowerCase();
-    return knownOccupations
+    return occNames
       .filter((o) => o.toLowerCase().includes(q) && o.toLowerCase() !== q)
       .slice(0, 6);
-  }, [occupation, knownOccupations]);
+  }, [occupation, occNames]);
 
   const kvMatches = useMemo(() => {
     if (!kv) return [];
     const q = kv.toLowerCase();
-    return knownKreisverbaende
-      .filter((k) => k.toLowerCase().includes(q))
-      .slice(0, 6);
-  }, [kv, knownKreisverbaende]);
+    return kvNames.filter((k) => k.toLowerCase().includes(q)).slice(0, 6);
+  }, [kv, kvNames]);
 
   function validate() {
     const e = {};
@@ -1268,8 +1285,9 @@ function SignForm({ onSubmit, serverError }) {
       e.name = "Bitte gib deinen vollständigen Namen an.";
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
       e.email = "Bitte gib eine gültige E-Mail-Adresse an.";
-    // agree is optional – name is shown publicly only if checked
     setErrors(e);
+    if (e.name) nameRef.current?.focus();
+    else if (e.email) emailRef.current?.focus();
     return Object.keys(e).length === 0;
   }
 
@@ -1315,6 +1333,7 @@ function SignForm({ onSubmit, serverError }) {
         </label>
         <input
           id="sign-name"
+          ref={nameRef}
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -1338,6 +1357,7 @@ function SignForm({ onSubmit, serverError }) {
         </label>
         <input
           id="sign-email"
+          ref={emailRef}
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
@@ -1360,6 +1380,7 @@ function SignForm({ onSubmit, serverError }) {
         </label>
         <input
           id="sign-kv"
+          ref={kvInputRef}
           type="text"
           value={kv}
           onChange={(e) => {
@@ -1391,6 +1412,7 @@ function SignForm({ onSubmit, serverError }) {
             } else if (e.key === "Escape") {
               setShowSuggest(false);
               setKvActiveIndex(-1);
+              kvInputRef.current?.focus();
             }
           }}
           placeholder="z. B. Berlin-Neukölln"
@@ -1433,6 +1455,7 @@ function SignForm({ onSubmit, serverError }) {
         </label>
         <input
           id="sign-occupation"
+          ref={occInputRef}
           type="text"
           value={occupation}
           onChange={(e) => {
@@ -1463,6 +1486,7 @@ function SignForm({ onSubmit, serverError }) {
             } else if (e.key === "Escape") {
               setShowOccSuggest(false);
               setOccActiveIndex(-1);
+              occInputRef.current?.focus();
             }
           }}
           placeholder="z. B. Sozialarbeiter*in"
@@ -1542,7 +1566,7 @@ function SignForm({ onSubmit, serverError }) {
       </p>
     </form>
   );
-}
+});
 
 const BERLIN_DISTRICTS = new Set([
   "Spandau",
