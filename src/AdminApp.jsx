@@ -119,6 +119,7 @@ function TemplateEditor({ token, template, onSaved, onDeleted }) {
       TemplateVariable,
     ],
     content: htmlBody,
+    immediatelyRender: false,
     onUpdate({ editor }) {
       setHtmlBody(editor.getHTML());
     },
@@ -128,7 +129,9 @@ function TemplateEditor({ token, template, onSaved, onDeleted }) {
     setSubject(template?.subject || "");
     setHtmlBody(template?.html_body || "");
     setMessage("");
-    editor?.commands.setContent(template?.html_body || "", false);
+    if (editor && !editor.isDestroyed) {
+      editor.commands.setContent(template?.html_body || "", false);
+    }
   }, [template, editor]);
 
   useEffect(() => {
@@ -368,7 +371,7 @@ function TemplateEditor({ token, template, onSaved, onDeleted }) {
 
 export default function AdminApp() {
   const [token, setToken] = useState(
-    () => sessionStorage.getItem(TOKEN_KEY) || "",
+    () => localStorage.getItem(TOKEN_KEY) || "",
   );
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
@@ -418,7 +421,7 @@ export default function AdminApp() {
         },
       });
       if (res.status === 401) {
-        sessionStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(TOKEN_KEY);
         setToken("");
       }
       return res;
@@ -484,7 +487,7 @@ export default function AdminApp() {
       return;
     }
     const { token: newToken } = await res.json();
-    sessionStorage.setItem(TOKEN_KEY, newToken);
+    localStorage.setItem(TOKEN_KEY, newToken);
     setToken(newToken);
     setPassword("");
     // Bootstrap data immediately with the fresh token — don't wait for the hook chain
