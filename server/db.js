@@ -34,7 +34,7 @@ export async function getSigners({
         : sql``;
 
   const searchClause = searchParam
-    ? sql`AND (LOWER(s.name) LIKE ${searchParam} OR LOWER(s.kreisverband) LIKE ${searchParam} OR LOWER(s.occupation) LIKE ${searchParam})`
+    ? sql`AND (LOWER(s.name) LIKE ${searchParam} OR LOWER(s.kreisverband) LIKE ${searchParam})`
     : sql``;
 
   const [{ total }] = await sql`
@@ -592,7 +592,11 @@ export async function loadKvNotTypo() {
   return await sql`SELECT canonical, outlier FROM kv_not_typo`;
 }
 
-export async function upsertKvStateCache(kreisverband, state, source = "nominatim") {
+export async function upsertKvStateCache(
+  kreisverband,
+  state,
+  source = "nominatim",
+) {
   await sql`
     INSERT INTO kv_state_cache (kreisverband, state, source, resolved_at)
     VALUES (${kreisverband}, ${state}, ${source}, NOW())
