@@ -87,8 +87,8 @@ export async function getSigners({
         CASE WHEN LOWER(s.name) LIKE ${searchParam} THEN 1.0 ELSE 0.0 END,
         CASE WHEN LOWER(s.kreisverband) LIKE ${searchParam} THEN 1.0 ELSE 0.0 END,
         COALESCE((
-          SELECT 1.0 - MIN(levenshtein(w, ${searchClean}))::float
-                     / GREATEST(LENGTH(w), ${searchClean.length}, 1)
+          SELECT MAX(1.0 - levenshtein(w, ${searchClean})::float
+                         / GREATEST(LENGTH(w), ${searchClean.length}, 1))
           FROM regexp_split_to_table(LOWER(s.name), '\s+') AS w
           WHERE LENGTH(w) >= 2
         ), 0.0),
