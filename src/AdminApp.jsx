@@ -976,8 +976,7 @@ export default function AdminApp() {
                               if (res.ok) {
                                 setUnresolvedKvs((prev) =>
                                   prev.filter(
-                                    (u) =>
-                                      u.kreisverband !== kv.kreisverband,
+                                    (u) => u.kreisverband !== kv.kreisverband,
                                   ),
                                 );
                                 setKvStateSelections((prev) => {
@@ -997,9 +996,7 @@ export default function AdminApp() {
                             setAssigningKv(null);
                           }}
                         >
-                          {assigningKv === kv.kreisverband
-                            ? "…"
-                            : "Zuordnen"}
+                          {assigningKv === kv.kreisverband ? "…" : "Zuordnen"}
                         </button>
                       </div>
                     ))}
@@ -1069,9 +1066,7 @@ export default function AdminApp() {
                         if (unresRes.ok)
                           setUnresolvedKvs(await unresRes.json());
                       } else {
-                        setResolveMessage(
-                          "Fehler bei der erneuten Zuordnung.",
-                        );
+                        setResolveMessage("Fehler bei der erneuten Zuordnung.");
                       }
                     } catch {
                       setResolveMessage("Fehler bei der erneuten Zuordnung.");
@@ -1277,11 +1272,7 @@ export default function AdminApp() {
               <div className="admin-card" style={{ gridColumn: "1 / -1" }}>
                 <div className="admin-card-title">
                   Berufs-Tippfehler (
-                  {occOutlierGroups.reduce(
-                    (n, g) => n + g.outliers.length,
-                    0,
-                  )}
-                  )
+                  {occOutlierGroups.reduce((n, g) => n + g.outliers.length, 0)})
                 </div>
                 <div className="outlier-groups">
                   {occOutlierGroups.map((group) => (
