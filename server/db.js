@@ -23,7 +23,8 @@ export async function getSigners({
   limit = Math.min(Math.max(1, limit), 100);
   offset = Math.max(0, offset);
 
-  const searchParam = search.trim() ? `%${search.trim().toLowerCase()}%` : null;
+  const searchClean = search.trim().toLowerCase();
+  const searchParam = searchClean ? `%${searchClean}%` : null;
   const sortDir = sort === "asc" ? sql`ASC` : sql`DESC`;
 
   const filterClause =
@@ -33,25 +34,74 @@ export async function getSigners({
         ? sql`AND s.kreisverband != ''`
         : sql``;
 
-  const searchClause = searchParam
-    ? sql`AND (LOWER(s.name) LIKE ${searchParam} OR LOWER(s.kreisverband) LIKE ${searchParam})`
-    : sql``;
+  if (!searchClean) {
+    const [{ total }] = await sql`
+      SELECT COUNT(*)::int AS total
+      FROM signers s
+      WHERE s.verified = TRUE AND s.show_publicly = TRUE
+      ${filterClause}
+    `;
+    const signers = await sql`
+      SELECT s.id, s.name, s.kreisverband, s.occupation, s.state, s.created_at
+      FROM signers s
+      WHERE s.verified = TRUE AND s.show_publicly = TRUE
+      ${filterClause}
+      ORDER BY s.created_at ${sortDir}
+      LIMIT ${limit} OFFSET ${offset}
+    `;
+    return { signers, total };
+  }
+
+  // Fuzzy search: LIKE for exact substring + per-word Levenshtein for typo tolerance.
+  // A name word matches if edit distance <= ~40% of its length (min 1).
+  const fuzzyClause = sql`
+    AND (
+      LOWER(s.name) LIKE ${searchParam}
+      OR LOWER(s.kreisverband) LIKE ${searchParam}
+      OR EXISTS (
+        SELECT 1 FROM regexp_split_to_table(LOWER(s.name), '\s+') AS w
+        WHERE LENGTH(w) >= 2
+          AND levenshtein_less_equal(w, ${searchClean}, GREATEST(1, ROUND(LENGTH(w) * 0.4)::int))
+              <= GREATEST(1, ROUND(LENGTH(w) * 0.4)::int)
+      )
+      OR (LENGTH(s.kreisverband) >= 3
+          AND levenshtein_less_equal(
+                LOWER(s.kreisverband), ${searchClean},
+                GREATEST(2, ROUND(GREATEST(LENGTH(s.kreisverband), ${searchClean.length}) * 0.35)::int)
+              ) <= GREATEST(2, ROUND(GREATEST(LENGTH(s.kreisverband), ${searchClean.length}) * 0.35)::int)
+      )
+    )
+  `;
 
   const [{ total }] = await sql`
     SELECT COUNT(*)::int AS total
     FROM signers s
     WHERE s.verified = TRUE AND s.show_publicly = TRUE
     ${filterClause}
-    ${searchClause}
+    ${fuzzyClause}
   `;
 
   const signers = await sql`
-    SELECT s.id, s.name, s.kreisverband, s.occupation, s.state, s.created_at
+    SELECT s.id, s.name, s.kreisverband, s.occupation, s.state, s.created_at,
+      GREATEST(
+        CASE WHEN LOWER(s.name) LIKE ${searchParam} THEN 1.0 ELSE 0.0 END,
+        CASE WHEN LOWER(s.kreisverband) LIKE ${searchParam} THEN 1.0 ELSE 0.0 END,
+        COALESCE((
+          SELECT 1.0 - MIN(levenshtein(w, ${searchClean}))::float
+                     / GREATEST(LENGTH(w), ${searchClean.length}, 1)
+          FROM regexp_split_to_table(LOWER(s.name), '\s+') AS w
+          WHERE LENGTH(w) >= 2
+        ), 0.0),
+        CASE WHEN LENGTH(s.kreisverband) >= 3
+             THEN 1.0 - levenshtein(LOWER(s.kreisverband), ${searchClean})::float
+                      / GREATEST(LENGTH(s.kreisverband), ${searchClean.length}, 1)
+             ELSE 0.0 END
+      ) AS match_score
     FROM signers s
     WHERE s.verified = TRUE AND s.show_publicly = TRUE
     ${filterClause}
-    ${searchClause}
-    ORDER BY s.created_at ${sortDir}
+    ${fuzzyClause}
+    ORDER BY match_score DESC, s.created_at ${sortDir}
     LIMIT ${limit} OFFSET ${offset}
   `;
 

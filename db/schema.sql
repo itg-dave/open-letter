@@ -1,3 +1,5 @@
+CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;
+
 CREATE TABLE IF NOT EXISTS signers (
   id                 SERIAL PRIMARY KEY,
   name               TEXT NOT NULL,
