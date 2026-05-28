@@ -706,8 +706,12 @@ export default function App() {
               </p>
 
               <p className="gruss">Mit solidarischen Grüßen</p>
+
               <p className="signers-line">
-                {total.toLocaleString("de-DE")} Mitglieder und
+                Marlen Borchardt, Philipp Möller, Lisbeth Ritterhoff und Zozan
+                Bulut und
+                <br />
+                {(total - 4).toLocaleString("de-DE")} Mitglieder und
                 Sympathisant*innen der Partei Die Linke
               </p>
             </article>
