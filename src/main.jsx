@@ -57,7 +57,7 @@ function getRootComponent() {
   if (parts[0] === "abmelden" && parts[1]) return <UnsubscribeApp />;
   if (parts[0] === "verwaltung" && parts.length === 1)
     return (
-      <Suspense fallback={null}>
+      <Suspense fallback={<div style={{ padding: "40px 24px", fontFamily: "Inter, sans-serif", color: "var(--akzent, #6f003c)", textAlign: "center", marginTop: 80 }}>Laden&hellip;</div>}>
         <AdminApp />
       </Suspense>
     );

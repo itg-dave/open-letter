@@ -295,7 +295,12 @@ function TemplateEditor({ token, template, onSaved, onDeleted }) {
         </div>
 
         {linkInput !== null && (
-          <div className="link-input-row">
+          <div
+            className="link-input-row"
+            role="dialog"
+            aria-modal="false"
+            aria-label="Link einfügen"
+          >
             <input
               autoFocus
               type="url"
@@ -310,7 +315,7 @@ function TemplateEditor({ token, template, onSaved, onDeleted }) {
             <button type="button" onClick={applyLink}>
               OK
             </button>
-            <button type="button" onClick={() => setLinkInput(null)}>
+            <button type="button" aria-label="Abbrechen" onClick={() => setLinkInput(null)}>
               ✕
             </button>
           </div>
@@ -464,6 +469,15 @@ export default function AdminApp() {
     if (occOutlierRes.ok) setOccOutlierGroups(await occOutlierRes.json());
   }, [api, token]);
 
+  const reloadCampaigns = useCallback(async () => {
+    const [campaignRes, statsRes] = await Promise.all([
+      api("/api/admin/campaigns"),
+      api("/api/admin/stats"),
+    ]);
+    if (campaignRes.ok) setCampaigns(await campaignRes.json());
+    if (statsRes.ok) setStats(await statsRes.json());
+  }, [api]);
+
   useEffect(() => {
     loadAll();
   }, [loadAll]);
@@ -559,7 +573,7 @@ export default function AdminApp() {
         scheduled_at: scheduledAt.toISOString(),
       }),
     });
-    if (res.ok) loadAll();
+    if (res.ok) reloadCampaigns();
   }
 
   async function sendNow(e) {
@@ -573,7 +587,7 @@ export default function AdminApp() {
         scheduled_at: new Date().toISOString(),
       }),
     });
-    if (res.ok) loadAll();
+    if (res.ok) reloadCampaigns();
   }
 
   async function sendTest(e) {
@@ -599,7 +613,7 @@ export default function AdminApp() {
 
   async function cancel(id) {
     const res = await api(`/api/admin/campaigns/${id}`, { method: "DELETE" });
-    if (res.ok) loadAll();
+    if (res.ok) reloadCampaigns();
   }
 
   function logout() {
@@ -944,7 +958,7 @@ export default function AdminApp() {
                               [kv.kreisverband]: e.target.value,
                             }))
                           }
-                          style={{ fontSize: 13, padding: "2px 4px" }}
+                          className="admin-compact-select"
                         >
                           <option value="">– Bundesland –</option>
                           {GERMAN_STATES.map((s) => (
@@ -955,12 +969,11 @@ export default function AdminApp() {
                         </select>
                         <button
                           type="button"
-                          className="cta cta--outline"
+                          className="cta cta--outline admin-compact-btn"
                           disabled={
                             !kvStateSelections[kv.kreisverband] ||
                             assigningKv === kv.kreisverband
                           }
-                          style={{ fontSize: 12, padding: "2px 10px" }}
                           onClick={async () => {
                             setAssigningKv(kv.kreisverband);
                             try {

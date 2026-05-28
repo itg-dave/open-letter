@@ -4,7 +4,6 @@ const MILESTONES = [
   1000, 1300, 1600, 2000, 2300, 2600, 3000, 4000, 5000, 7500, 10000,
 ];
 
-
 const MAP_VB = { x: -60, y: -10, w: 520, h: 520 };
 
 const GERMANY_PATH =
@@ -136,6 +135,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const knownIdsRef = useRef(new Set());
+  const visitStartRef = useRef(Date.now());
 
   const [emailModal, setEmailModal] = useState(null);
   const [resendCooldown, setResendCooldown] = useState(0);
@@ -158,6 +158,14 @@ export default function App() {
   const emailTrapRef = useFocusTrap(!!emailModal);
   const successTrapRef = useFocusTrap(showSuccess);
   const deletedTrapRef = useFocusTrap(showDeleted);
+  const mobileNavRef = useRef(null);
+
+  useEffect(() => {
+    if (navOpen && mobileNavRef.current) {
+      const firstLink = mobileNavRef.current.querySelector("a");
+      firstLink?.focus();
+    }
+  }, [navOpen]);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -226,13 +234,18 @@ export default function App() {
           search,
           limit: "18",
           offset: "0",
+          sort: filter === "alle" ? "asc" : "desc",
         });
         const res = await fetch(`/api/signers?${params}`);
         if (!res.ok) return;
         const data = await res.json();
         setSignersTotal(data.total);
         const newOnes = data.signers
-          .filter((s) => !knownIdsRef.current.has(s.id))
+          .filter(
+            (s) =>
+              !knownIdsRef.current.has(s.id) &&
+              new Date(s.created_at).getTime() > visitStartRef.current,
+          )
           .map((s) => ({ ...s, _isNew: true }));
         if (newOnes.length > 0) {
           newOnes.forEach((s) => knownIdsRef.current.add(s.id));
@@ -419,6 +432,15 @@ export default function App() {
         Zum Inhalt springen
       </a>
 
+      <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {total.toLocaleString("de-DE")} Unterschriften
+      </div>
+
       <header className="topbar">
         <div className="wordmark">
           <span className="dot" aria-hidden="true"></span> Gehaltsdeckel jetzt.
@@ -472,6 +494,7 @@ export default function App() {
       </header>
       <nav
         id="mobile-nav"
+        ref={mobileNavRef}
         className={"mobile-nav" + (navOpen ? " open" : "")}
         aria-label="Mobilnavigation"
         aria-hidden={!navOpen}
@@ -1503,20 +1526,60 @@ const SignForm = memo(function SignForm({
 
 const STATE_CLUSTERS = [
   { id: "nrw", label: "NRW", state: "Nordrhein-Westfalen", center: [55, 230] },
-  { id: "bawue", label: "Baden-Württemberg", state: "Baden-Württemberg", center: [125, 420] },
+  {
+    id: "bawue",
+    label: "Baden-Württemberg",
+    state: "Baden-Württemberg",
+    center: [125, 420],
+  },
   { id: "bayern", label: "Bayern", state: "Bayern", center: [230, 395] },
-  { id: "niedersachsen", label: "Niedersachsen", state: "Niedersachsen", center: [150, 165] },
+  {
+    id: "niedersachsen",
+    label: "Niedersachsen",
+    state: "Niedersachsen",
+    center: [150, 165],
+  },
   { id: "hessen", label: "Hessen", state: "Hessen", center: [128, 295] },
   { id: "sachsen", label: "Sachsen", state: "Sachsen", center: [305, 260] },
   { id: "berlin", label: "Berlin", state: "Berlin", center: [323, 163] },
-  { id: "brandenburg", label: "Brandenburg", state: "Brandenburg", center: [290, 185] },
+  {
+    id: "brandenburg",
+    label: "Brandenburg",
+    state: "Brandenburg",
+    center: [290, 185],
+  },
   { id: "hamburg", label: "Hamburg", state: "Hamburg", center: [179, 98] },
   { id: "bremen", label: "Bremen", state: "Bremen", center: [128, 128] },
-  { id: "sh", label: "Schleswig-Holstein", state: "Schleswig-Holstein", center: [175, 48] },
-  { id: "thueringen", label: "Thüringen", state: "Thüringen", center: [228, 270] },
-  { id: "sachsen-anhalt", label: "Sachsen-Anhalt", state: "Sachsen-Anhalt", center: [255, 205] },
-  { id: "mv", label: "Meckl.-Vorpommern", state: "Mecklenburg-Vorpommern", center: [268, 64] },
-  { id: "rlp", label: "Rheinland-Pfalz", state: "Rheinland-Pfalz", center: [97, 323] },
+  {
+    id: "sh",
+    label: "Schleswig-Holstein",
+    state: "Schleswig-Holstein",
+    center: [175, 48],
+  },
+  {
+    id: "thueringen",
+    label: "Thüringen",
+    state: "Thüringen",
+    center: [228, 270],
+  },
+  {
+    id: "sachsen-anhalt",
+    label: "Sachsen-Anhalt",
+    state: "Sachsen-Anhalt",
+    center: [255, 205],
+  },
+  {
+    id: "mv",
+    label: "Meckl.-Vorpommern",
+    state: "Mecklenburg-Vorpommern",
+    center: [268, 64],
+  },
+  {
+    id: "rlp",
+    label: "Rheinland-Pfalz",
+    state: "Rheinland-Pfalz",
+    center: [97, 323],
+  },
   { id: "saarland", label: "Saarland", state: "Saarland", center: [51, 371] },
 ];
 
@@ -1636,7 +1699,11 @@ function KreisverbandMap({ kvGroups }) {
 
   const chips = useMemo(() => {
     const list = clusterData.map((cl) => {
-      return { ...chipPos(cl.label, cl.total, cl.center), id: cl.id, isSolo: false };
+      return {
+        ...chipPos(cl.label, cl.total, cl.center),
+        id: cl.id,
+        isSolo: false,
+      };
     });
     return nudgeChips(list);
   }, [clusterData]);

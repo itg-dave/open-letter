@@ -13,6 +13,7 @@
   --akzent: #6f003c;
   --fond: #f4f1ec;
   --grau: #6b6b6b;
+  --grau-stark: #4a4a4a;
   --grau-hell: #e6e6e6;
   --erfolg: #0a7a3a;
   --fehler: #b00020;
@@ -77,6 +78,19 @@ button {
 }
 .mono {
   font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+
+/* ---------- Visually hidden utility ---------- */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* ---------- Skip link ---------- */
@@ -542,7 +556,7 @@ h1.headline .banner {
   font-size: 11px;
   letter-spacing: var(--ls-caps);
   text-transform: uppercase;
-  color: var(--grau);
+  color: var(--grau-stark);
   margin-top: 18px;
 }
 
@@ -697,7 +711,7 @@ h1.headline .banner {
   font-family: "Work Sans";
   font-weight: 900;
   font-size: 14px;
-  color: var(--rot);
+  color: var(--rot-text);
   letter-spacing: var(--ls-wide);
 }
 
@@ -1205,9 +1219,6 @@ h1.headline .banner {
   0% {
     transform: scale(0);
   }
-  60% {
-    transform: scale(1.06);
-  }
   100% {
     transform: scale(1);
   }
@@ -1550,12 +1561,12 @@ h1.headline .banner {
   }
 
   .occupation-chip--map {
-    font-size: 10px;
+    font-size: 11px;
     padding: 7px 11px;
   }
 
   .occupation-chip--map .occupation-count {
-    font-size: 9px;
+    font-size: 11px;
     padding: 2px 5px;
   }
 }
@@ -1684,7 +1695,7 @@ h1.headline .banner {
   font-size: 16px;
   line-height: 1;
   color: var(--akzent);
-  background: linear-gradient(transparent, white 55%);
+  background: linear-gradient(transparent, var(--weiss) 55%);
   pointer-events: none;
   user-select: none;
 }
@@ -1705,7 +1716,7 @@ h1.headline .banner {
 }
 
 .kv-map-popup-row .occupation-count {
-  font-size: 10px;
+  font-size: 11px;
   padding: 1px 6px;
   min-width: 18px;
   flex-shrink: 0;
@@ -2425,6 +2436,17 @@ footer {
   cursor: not-allowed;
 }
 
+.admin-compact-select {
+  font-size: 13px;
+  padding: 6px 8px;
+  min-height: 36px;
+}
+.admin-compact-btn {
+  font-size: 12px;
+  padding: 6px 14px;
+  min-height: 36px;
+}
+
 .admin-test-feedback {
   font-size: 13px;
   margin: 0;
@@ -2477,7 +2499,7 @@ footer {
 
 .status-sending {
   background: var(--fond);
-  color: var(--rot);
+  color: var(--rot-text);
 }
 
 .status-sent {
@@ -2518,7 +2540,6 @@ footer {
 
 .outlier-group {
   border: 1px solid var(--fond);
-  border-radius: 8px;
   padding: 12px 16px;
 }
 
