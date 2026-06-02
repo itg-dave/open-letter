@@ -8,6 +8,20 @@ import {
   getOccupations,
   getKreisverbandStats,
   insertSigner,
+  insertZoomRegistration,
+  getSignerForZoomInvite,
+  getZoomRegistrationCount,
+  listZoomRegistrations,
+  getZoomCounts,
+  getZoomRecipients,
+  refreshZoomUnsubscribeToken,
+  deleteZoomRegistrationByUnsubscribeToken,
+  claimZoomMailing,
+  markZoomMailing,
+  listZoomMailings,
+  resetZoomMailings,
+  getZoomSettings,
+  setZoomSettings,
   confirmSigner,
   refreshVerificationToken,
   getVerifiedSignerName,
@@ -26,11 +40,16 @@ import {
   claimDueCampaigns,
   markCampaignSent,
   markCampaignFailed,
+  incrementCampaignOffset,
   getNewsletterRecipients,
   refreshUnsubscribeToken,
   refreshUnsubscribeTokenByEmail,
   getUnsubscribeState,
+  getUnifiedUnsubscribeState,
+  resolveEmailFromToken,
   optOutNewsletter,
+  optOutNewsletterByEmail,
+  deleteZoomByEmail,
   deleteSignerByUnsubscribeToken,
   getStateStats,
   ensureKvStateCacheTable,
@@ -51,14 +70,18 @@ import {
 } from "./db.js";
 import {
   sendVerificationEmail,
+  sendZoomConfirmationEmail,
   sendDeletionEmail,
   sendRenderedEmail,
   sendBatchEmails,
   buildUnsubscribeHeaders,
   renderEmailHtml,
   interpolateTemplate,
+  renderTemplateBySlug,
   sendAlreadySignedEmail,
+  zoomCalendarButton,
 } from "./email.js";
+import { buildZoomIcs } from "./ics.js";
 import { checkRateLimit } from "./ratelimit.js";
 import { startBackupSchedule } from "./backup.js";
 import {
@@ -81,6 +104,76 @@ const ALLOWED_ORIGINS = new Set(
 );
 const isDev = process.env.NODE_ENV !== "production";
 const TRUST_PROXY = process.env.TRUST_PROXY === "true";
+const ZOOM_LINK = process.env.ZOOM_LINK || "";
+const ZOOM_EVENT_AT_DEFAULT =
+  process.env.ZOOM_EVENT_AT || "2026-06-09T20:00:00+02:00";
+const ZOOM_EVENT_DURATION_MIN_DEFAULT = parseInt(
+  process.env.ZOOM_EVENT_DURATION_MIN || "90",
+  10,
+);
+const ZOOM_ICS_URL = `${BASE_URL}/api/zoom-termin.ics`;
+
+// Human German label for the event date/time, e.g. "9. Juni, 20:00 Uhr".
+function formatZoomLabel(date) {
+  if (Number.isNaN(date.getTime())) return "";
+  const day = new Intl.DateTimeFormat("de-DE", {
+    timeZone: "Europe/Berlin",
+    day: "numeric",
+    month: "long",
+  }).format(date);
+  const time = new Intl.DateTimeFormat("de-DE", {
+    timeZone: "Europe/Berlin",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+  return `${day}, ${time} Uhr`;
+}
+
+// Confirmation-mail phrasing derived from the link-mail offset.
+function offsetPhrase(hours) {
+  if (hours % 24 === 0) {
+    const days = hours / 24;
+    if (days === 1) return "einen Tag";
+    const words = {
+      2: "zwei",
+      3: "drei",
+      4: "vier",
+      5: "fünf",
+      6: "sechs",
+      7: "sieben",
+    };
+    return `${words[days] || days} Tage`;
+  }
+  if (hours === 1) return "eine Stunde";
+  return `${hours} Stunden`;
+}
+
+// Effective Zoom config: DB settings override env defaults.
+async function getZoomConfig() {
+  let s = {};
+  try {
+    s = await getZoomSettings();
+  } catch (err) {
+    console.error("[zoom] getZoomSettings failed, using defaults:", err);
+  }
+  const eventAt = new Date(s.zoom_event_at || ZOOM_EVENT_AT_DEFAULT);
+  const durationMin = parseInt(
+    s.zoom_duration_min || String(ZOOM_EVENT_DURATION_MIN_DEFAULT),
+    10,
+  );
+  const linkOffsetHours = parseInt(s.zoom_link_offset_hours || "24", 10);
+  const reminderOffsetHours = parseInt(s.zoom_reminder_offset_hours || "2", 10);
+  return {
+    eventAt,
+    eventAtIso: eventAt.toISOString(),
+    durationMin,
+    linkOffsetHours,
+    reminderOffsetHours,
+    link: s.zoom_link || ZOOM_LINK,
+    label: formatZoomLabel(eventAt),
+    icsUrl: ZOOM_ICS_URL,
+  };
+}
 
 const ADMIN_PATH = normalizeAdminPath(process.env.ADMIN_PATH);
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
@@ -247,6 +340,43 @@ async function sleep(ms) {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function buildZoomLinkInfo(zoomLink) {
+  const linkPart = zoomLink
+    ? `<p>Hier geht's direkt zum Zoom: <a href="${zoomLink}">${zoomLink}</a></p>`
+    : `<p>Den Einwahllink schicken wir dir rechtzeitig vor dem Termin per E-Mail.</p>`;
+  return linkPart + zoomCalendarButton(ZOOM_ICS_URL);
+}
+
+function buildZoomEventIcs(cfg) {
+  const desc = cfg.link
+    ? `Zoom-Treffen der Initiative Gehaltsdeckel jetzt.\nEinwahl: ${cfg.link}`
+    : `Zoom-Treffen der Initiative Gehaltsdeckel jetzt.\nDen Einwahllink bekommst du per E-Mail.`;
+  return buildZoomIcs({
+    start: cfg.eventAt,
+    durationMin: cfg.durationMin,
+    summary: "Zoom-Treffen – Gehaltsdeckel jetzt",
+    description: desc,
+    url: cfg.link,
+    location: "Zoom",
+    uid: `zoom-${cfg.eventAt.getTime()}@gehaltsdeckel.jetzt`,
+  });
+}
+
+function zoomUnsubPage(inner) {
+  return `<!doctype html><html lang="de"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Zoom-Verteiler — Gehaltsdeckel jetzt</title>
+<style>
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; background:#f4f1ec; color:#6f003c; font-family:Inter,Arial,sans-serif; padding:24px; }
+  .card { max-width:520px; background:#fff; border:1px solid #6f003c; box-shadow:10px 10px 0 #ff0000; padding:40px; }
+  h1 { font-family:"Work Sans",Arial,sans-serif; font-weight:900; font-size:28px; margin:0 0 16px; }
+  p { font-size:16px; line-height:1.6; margin:0 0 16px; }
+  button { font-family:"Work Sans",Arial,sans-serif; font-weight:700; font-size:15px; color:#fff; background:#ff0000; border:none; padding:14px 22px; cursor:pointer; }
+  button:hover { background:#cc0000; }
+</style></head><body><div class="card">${inner}</div></body></html>`;
+}
+
 async function sendCampaign(campaign) {
   const template = await getEmailTemplate(campaign.template_id);
   if (!template) {
@@ -257,60 +387,123 @@ async function sendCampaign(campaign) {
     return;
   }
 
-  const recipients = await getNewsletterRecipients();
+  const audience = campaign.audience || "newsletter";
+  const isZoom = audience === "zoom" || audience === "zoom_delegates";
+  const isZoomInvite = audience === "newsletter_zoom_invite";
+
+  const recipients = isZoom
+    ? await getZoomRecipients({ delegatesOnly: audience === "zoom_delegates" })
+    : await getNewsletterRecipients();
   const stats = await getNewsletterStats();
   const signerCount = stats.signerCount?.toLocaleString("de-DE") || "0";
+  const zoomCfg = isZoom || isZoomInvite ? await getZoomConfig() : null;
+  const zoomLinkInfo = zoomCfg ? buildZoomLinkInfo(zoomCfg.link) : "";
+
+  // Resume from where a previous run left off (0 for fresh start).
+  const resumeOffset = campaign.sent_offset ?? 0;
+  const todo = recipients.slice(resumeOffset);
   let sent = 0;
 
   console.log(
-    `[campaign] ${campaign.id} starting — ${recipients.length} recipients, subject="${campaign.subject}"`,
+    `[campaign] ${campaign.id} starting — ${recipients.length} total, resuming from offset=${resumeOffset}, remaining=${todo.length}, audience=${audience}`,
   );
 
-  try {
-    for (let i = 0; i < recipients.length; i += 100) {
-      const batch = recipients.slice(i, i + 100);
-      const chunkIndex = Math.floor(i / 100);
+  for (let i = 0; i < todo.length; i += 100) {
+    const batch = todo.slice(i, i + 100);
+    const chunkIndex = Math.floor((resumeOffset + i) / 100);
 
-      const payloads = [];
-      for (const recipient of batch) {
-        const unsubscribeToken = await refreshUnsubscribeToken(recipient.id);
-        const unsubscribeUrl = `${BASE_URL}/abmelden/${unsubscribeToken}`;
-        const optOutUrl = `${BASE_URL}/api/unsubscribe/${unsubscribeToken}/opt-out`;
+    const payloads = [];
+    const skipped = [];
+    for (const recipient of batch) {
+      try {
         const firstName = recipient.name.split(/\s/)[0];
-        const variables = {
-          name: recipient.name,
-          firstName,
-          signerCount,
-          unsubscribeUrl,
-        };
-        const html = renderEmailHtml(template.html_body, variables);
-        const subject = interpolateTemplate(campaign.subject, variables);
-
+        let variables;
+        let optOutUrl;
+        if (isZoom) {
+          const token = await refreshZoomUnsubscribeToken(recipient.id);
+          const unsubscribeUrl = `${BASE_URL}/abmelden/${token}?from=zoom`;
+          optOutUrl = `${BASE_URL}/api/zoom-abmelden/${token}/opt-out`;
+          variables = {
+            name: recipient.name,
+            firstName,
+            eventLabel: zoomCfg.label,
+            zoomLink: zoomCfg.link,
+            linkInfo: zoomLinkInfo,
+            unsubscribeUrl,
+          };
+        } else if (isZoomInvite) {
+          const token = await refreshUnsubscribeToken(recipient.id);
+          const unsubscribeUrl = `${BASE_URL}/abmelden/${token}`;
+          optOutUrl = `${BASE_URL}/api/unsubscribe/${token}/opt-out`;
+          variables = {
+            name: recipient.name,
+            firstName,
+            signerCount,
+            eventLabel: zoomCfg.label,
+            zoomJaUrl: `${BASE_URL}/api/zoom-anmelden/${token}?delegiert=0`,
+            zoomJaDelegiertUrl: `${BASE_URL}/api/zoom-anmelden/${token}?delegiert=1`,
+            unsubscribeUrl,
+          };
+        } else {
+          const token = await refreshUnsubscribeToken(recipient.id);
+          const unsubscribeUrl = `${BASE_URL}/abmelden/${token}`;
+          optOutUrl = `${BASE_URL}/api/unsubscribe/${token}/opt-out`;
+          variables = {
+            name: recipient.name,
+            firstName,
+            signerCount,
+            unsubscribeUrl,
+          };
+        }
         payloads.push({
           to: recipient.email,
-          subject,
-          html,
+          subject: interpolateTemplate(campaign.subject, variables),
+          html: renderEmailHtml(template.html_body, variables),
           headers: buildUnsubscribeHeaders(optOutUrl),
         });
+      } catch (prepErr) {
+        console.error(
+          `[campaign] ${campaign.id} skipping recipient ${recipient.id} (prep failed):`,
+          prepErr,
+        );
+        skipped.push(recipient.id);
       }
-
-      await sendBatchEmails(payloads, `campaign-${campaign.id}/chunk-${chunkIndex}`);
-      sent += payloads.length;
-
-      console.log(
-        `[campaign] ${campaign.id} progress — ${sent}/${recipients.length} sent`,
-      );
-      if (i + 100 < recipients.length) await sleep(1000);
     }
 
-    console.log(
-      `[campaign] ${campaign.id} done — ${sent}/${recipients.length} sent`,
-    );
-    await markCampaignSent(campaign.id, sent);
-  } catch (err) {
-    console.error(`[campaign] ${campaign.id} failed after ${sent} sent:`, err);
-    await markCampaignFailed(campaign.id, sent);
+    if (payloads.length === 0) {
+      // All skipped — advance offset and continue.
+      await incrementCampaignOffset(campaign.id, batch.length);
+      sent += batch.length;
+      continue;
+    }
+
+    try {
+      await sendBatchEmails(
+        payloads,
+        `campaign-${campaign.id}/chunk-${chunkIndex}`,
+      );
+      sent += batch.length;
+      await incrementCampaignOffset(campaign.id, batch.length);
+      console.log(
+        `[campaign] ${campaign.id} progress — ${resumeOffset + sent}/${recipients.length} sent${skipped.length ? `, ${skipped.length} skipped` : ""}`,
+      );
+    } catch (sendErr) {
+      console.error(
+        `[campaign] ${campaign.id} batch send failed at chunk ${chunkIndex}:`,
+        sendErr,
+      );
+      // Persist how many we've sent so far, then mark failed for retry.
+      await markCampaignFailed(campaign.id);
+      return;
+    }
+
+    if (i + 100 < todo.length) await sleep(1000);
   }
+
+  console.log(
+    `[campaign] ${campaign.id} done — ${resumeOffset + sent}/${recipients.length} sent`,
+  );
+  await markCampaignSent(campaign.id, resumeOffset + sent);
 }
 
 let campaignWorkerRunning = false;
@@ -331,6 +524,140 @@ async function runCampaignWorker() {
 
 const campaignWorker = setInterval(runCampaignWorker, 60 * 1000);
 campaignWorker.unref?.();
+
+// ---- Zoom event mailings (link 1 day before + ICS, reminder 2 hours before) ----
+
+// Renders one zoom event mail (kind 'link' | 'reminder') for a recipient using
+// the given unsubscribe token. Shared by the worker and the admin test-send so
+// both exercise the exact same rendering (incl. the .ics attachment for 'link').
+async function buildZoomMailPayload(kind, recipient, token, cfg) {
+  const unsubscribeUrl = `${BASE_URL}/abmelden/${token}?from=zoom`;
+  const optOutUrl = `${BASE_URL}/api/zoom-abmelden/${token}/opt-out`;
+  const slug = kind === "link" ? "zoom_link" : "zoom_reminder";
+  const rendered = await renderTemplateBySlug(slug, {
+    name: recipient.name,
+    firstName: recipient.name.split(/\s/)[0],
+    eventLabel: cfg.label,
+    linkInfo: buildZoomLinkInfo(cfg.link),
+    unsubscribeUrl,
+  });
+  const payload = {
+    to: recipient.email,
+    subject: rendered.subject,
+    html: rendered.html,
+    headers: buildUnsubscribeHeaders(optOutUrl),
+  };
+  if (kind === "link") {
+    const icsB64 = Buffer.from(buildZoomEventIcs(cfg), "utf-8").toString(
+      "base64",
+    );
+    payload.attachments = [
+      {
+        filename: "zoom-termin.ics",
+        content: icsB64,
+        content_type: "text/calendar; method=PUBLISH; charset=utf-8",
+      },
+    ];
+  }
+  return payload;
+}
+
+async function sendZoomLinkMails(cfg) {
+  const recipients = await getZoomRecipients();
+  let sent = 0;
+  console.log(
+    `[zoom-mail] link mailing starting — ${recipients.length} recipients`,
+  );
+  for (const recipient of recipients) {
+    try {
+      const token = await refreshZoomUnsubscribeToken(recipient.id);
+      const payload = await buildZoomMailPayload("link", recipient, token, cfg);
+      await sendRenderedEmail(payload);
+      sent++;
+    } catch (err) {
+      console.error(`[zoom-mail] link send failed for one recipient:`, err);
+    }
+    await sleep(550); // respect Resend rate limit (~2/s)
+  }
+  console.log(
+    `[zoom-mail] link mailing done — ${sent}/${recipients.length} sent`,
+  );
+  return sent;
+}
+
+async function sendZoomReminderMails(cfg) {
+  const recipients = await getZoomRecipients();
+  let sent = 0;
+  console.log(
+    `[zoom-mail] reminder starting — ${recipients.length} recipients`,
+  );
+  for (let i = 0; i < recipients.length; i += 100) {
+    const batch = recipients.slice(i, i + 100);
+    const chunkIndex = Math.floor(i / 100);
+    const payloads = [];
+    for (const recipient of batch) {
+      const token = await refreshZoomUnsubscribeToken(recipient.id);
+      payloads.push(
+        await buildZoomMailPayload("reminder", recipient, token, cfg),
+      );
+    }
+    await sendBatchEmails(payloads, `zoom-reminder/chunk-${chunkIndex}`);
+    sent += payloads.length;
+    if (i + 100 < recipients.length) await sleep(1000);
+  }
+  console.log(`[zoom-mail] reminder done — ${sent}/${recipients.length} sent`);
+  return sent;
+}
+
+let zoomMailingRunning = false;
+
+async function runZoomMailingWorker() {
+  if (zoomMailingRunning) return;
+  const cfg = await getZoomConfig();
+  const eventMs = cfg.eventAt.getTime();
+  if (Number.isNaN(eventMs)) return;
+  const linkMs = cfg.linkOffsetHours * 60 * 60 * 1000;
+  const reminderMs = cfg.reminderOffsetHours * 60 * 60 * 1000;
+  const now = Date.now();
+  zoomMailingRunning = true;
+  try {
+    // Link + ICS (needs the actual Zoom link)
+    if (now >= eventMs - linkMs && now < eventMs) {
+      if (!cfg.link) {
+        console.warn(
+          "[zoom-mail] link window open but ZOOM_LINK is not set — skipping (will retry once configured)",
+        );
+      } else if (await claimZoomMailing("link")) {
+        try {
+          const count = await sendZoomLinkMails(cfg);
+          await markZoomMailing("link", "sent", count);
+        } catch (err) {
+          console.error("[zoom-mail] link mailing failed:", err);
+          await markZoomMailing("link", "failed");
+        }
+      }
+    }
+    // Reminder
+    if (now >= eventMs - reminderMs && now < eventMs) {
+      if (await claimZoomMailing("reminder")) {
+        try {
+          const count = await sendZoomReminderMails(cfg);
+          await markZoomMailing("reminder", "sent", count);
+        } catch (err) {
+          console.error("[zoom-mail] reminder failed:", err);
+          await markZoomMailing("reminder", "failed");
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Zoom mailing worker error:", err);
+  } finally {
+    zoomMailingRunning = false;
+  }
+}
+
+const zoomMailingWorker = setInterval(runZoomMailingWorker, 60 * 1000);
+zoomMailingWorker.unref?.();
 
 const server = Bun.serve({
   port: PORT,
@@ -536,17 +863,34 @@ const server = Bun.serve({
             if (verifiedName) {
               const unsub = await refreshUnsubscribeTokenByEmail(email);
               const baseUrl = getBaseUrl(req);
-              const headers = unsub ? buildUnsubscribeHeaders(`${baseUrl}/api/unsubscribe/${unsub}/opt-out`) : undefined;
-              const unsubscribeUrl = unsub ? `${baseUrl}/abmelden/${unsub}` : undefined;
-              await sendAlreadySignedEmail({ to: email, name: verifiedName, headers, unsubscribeUrl });
+              const headers = unsub
+                ? buildUnsubscribeHeaders(
+                    `${baseUrl}/api/unsubscribe/${unsub}/opt-out`,
+                  )
+                : undefined;
+              const unsubscribeUrl = unsub
+                ? `${baseUrl}/abmelden/${unsub}`
+                : undefined;
+              await sendAlreadySignedEmail({
+                to: email,
+                name: verifiedName,
+                headers,
+                unsubscribeUrl,
+              });
             }
             return json({ ok: true });
           }
 
           const unsub = await refreshUnsubscribeTokenByEmail(email);
           const baseUrl = getBaseUrl(req);
-          const unsubHeaders = unsub ? buildUnsubscribeHeaders(`${baseUrl}/api/unsubscribe/${unsub}/opt-out`) : undefined;
-          const unsubscribeUrl = unsub ? `${baseUrl}/abmelden/${unsub}` : undefined;
+          const unsubHeaders = unsub
+            ? buildUnsubscribeHeaders(
+                `${baseUrl}/api/unsubscribe/${unsub}/opt-out`,
+              )
+            : undefined;
+          const unsubscribeUrl = unsub
+            ? `${baseUrl}/abmelden/${unsub}`
+            : undefined;
           await sendVerificationEmail({
             to: email,
             name,
@@ -561,6 +905,124 @@ const server = Bun.serve({
           console.error("POST /api/sign error:", err);
           return json({ error: "Internal server error" }, 500);
         }
+      },
+    },
+
+    "/api/zoom-register": {
+      async POST(req) {
+        try {
+          const ip = getClientIp(req);
+          const { allowed, retryAfter } = checkRateLimit(
+            ip,
+            "zoom",
+            30,
+            15 * 60 * 1000,
+          );
+          if (!allowed) {
+            return json(
+              { error: "Zu viele Anfragen. Bitte versuche es später erneut." },
+              429,
+              { "Retry-After": String(retryAfter) },
+            );
+          }
+
+          if (bodyTooLarge(req))
+            return json({ error: "Payload too large" }, 413);
+          const body = await req.json();
+          const name = sanitize(body.name);
+          const email = sanitizeEmail(body.email);
+          const kv = sanitize(body.kv || "").replace(/^KV\s*/i, "");
+          const delegierter = Boolean(body.delegierter);
+
+          if (name.length < 2) {
+            return json(
+              { error: "Name muss mindestens 2 Zeichen lang sein." },
+              400,
+            );
+          }
+          if (!isValidEmail(email)) {
+            return json(
+              { error: "Bitte gib eine gültige E-Mail-Adresse an." },
+              400,
+            );
+          }
+
+          const reg = await insertZoomRegistration({
+            name,
+            email,
+            kv,
+            delegierter,
+          });
+
+          try {
+            const cfg = await getZoomConfig();
+            const mailings = await listZoomMailings();
+            const reminderSent = mailings.some(
+              (m) => m.kind === "reminder" && m.status === "sent",
+            );
+            const linkSent = mailings.some(
+              (m) => m.kind === "link" && m.status === "sent",
+            );
+
+            if (reminderSent || linkSent) {
+              // Late signup: send the most recent bulk mail directly
+              const kind = reminderSent ? "reminder" : "link";
+              const unsubToken = await refreshZoomUnsubscribeToken(reg.id);
+              const payload = await buildZoomMailPayload(
+                kind,
+                { name, email },
+                unsubToken,
+                cfg,
+              );
+              await sendRenderedEmail(payload);
+            } else {
+              // Normal: send confirmation
+              await sendZoomConfirmationEmail({
+                to: email,
+                name,
+                eventLabel: cfg.label,
+                icsUrl: cfg.icsUrl,
+                linkTimingText: offsetPhrase(cfg.linkOffsetHours),
+              });
+            }
+          } catch (mailErr) {
+            console.error("zoom registration email failed:", mailErr);
+          }
+
+          return json({ ok: true });
+        } catch (err) {
+          console.error("POST /api/zoom-register error:", err);
+          return json({ error: "Internal server error" }, 500);
+        }
+      },
+    },
+
+    "/api/zoom-count": {
+      async GET() {
+        try {
+          const [countRow, cfg] = await Promise.all([
+            getZoomRegistrationCount(),
+            getZoomConfig(),
+          ]);
+          return json({ ...countRow, eventAt: cfg.eventAtIso });
+        } catch (err) {
+          console.error("GET /api/zoom-count error:", err);
+          return json({ error: "Internal server error" }, 500);
+        }
+      },
+    },
+
+    "/api/zoom-termin.ics": {
+      async GET() {
+        const cfg = await getZoomConfig();
+        const ics = buildZoomEventIcs(cfg);
+        return new Response(ics, {
+          headers: {
+            "Content-Type": "text/calendar; charset=utf-8",
+            "Content-Disposition": 'attachment; filename="zoom-termin.ics"',
+            "Cache-Control": "public, max-age=300",
+          },
+        });
       },
     },
 
@@ -595,8 +1057,14 @@ const server = Bun.serve({
           if (name) {
             const unsub = await refreshUnsubscribeTokenByEmail(email);
             const baseUrl = getBaseUrl(req);
-            const unsubHeaders = unsub ? buildUnsubscribeHeaders(`${baseUrl}/api/unsubscribe/${unsub}/opt-out`) : undefined;
-            const unsubscribeUrl = unsub ? `${baseUrl}/abmelden/${unsub}` : undefined;
+            const unsubHeaders = unsub
+              ? buildUnsubscribeHeaders(
+                  `${baseUrl}/api/unsubscribe/${unsub}/opt-out`,
+                )
+              : undefined;
+            const unsubscribeUrl = unsub
+              ? `${baseUrl}/abmelden/${unsub}`
+              : undefined;
             await sendVerificationEmail({
               to: email,
               name,
@@ -670,8 +1138,14 @@ const server = Bun.serve({
           if (found) {
             const unsub = await refreshUnsubscribeTokenByEmail(email);
             const baseUrl = getBaseUrl(req);
-            const unsubHeaders = unsub ? buildUnsubscribeHeaders(`${baseUrl}/api/unsubscribe/${unsub}/opt-out`) : undefined;
-            const unsubscribeUrl = unsub ? `${baseUrl}/abmelden/${unsub}` : undefined;
+            const unsubHeaders = unsub
+              ? buildUnsubscribeHeaders(
+                  `${baseUrl}/api/unsubscribe/${unsub}/opt-out`,
+                )
+              : undefined;
+            const unsubscribeUrl = unsub
+              ? `${baseUrl}/abmelden/${unsub}`
+              : undefined;
             await sendDeletionEmail({
               to: email,
               token,
@@ -709,17 +1183,20 @@ const server = Bun.serve({
       },
     },
 
+    // ---- Unified unsubscribe (serves both newsletter and zoom tokens) ----
+
     "/api/unsubscribe/:token": {
       async GET(req) {
         try {
-          const signer = await getUnsubscribeState(req.params.token);
-          if (!signer) return json({ ok: false }, 404);
-          return json({
-            ok: true,
-            emailMasked: maskEmail(signer.email),
-            newsletter: signer.newsletter,
-            canDelete: signer.verified,
-          });
+          const url = new URL(req.url);
+          const source =
+            url.searchParams.get("from") === "zoom" ? "zoom" : "newsletter";
+          const state = await getUnifiedUnsubscribeState(
+            req.params.token,
+            source,
+          );
+          if (!state) return json({ ok: false }, 404);
+          return json({ ok: true, ...state });
         } catch (err) {
           console.error("GET /api/unsubscribe error:", err);
           return json({ error: "Internal server error" }, 500);
@@ -727,6 +1204,7 @@ const server = Bun.serve({
       },
     },
 
+    // One-click List-Unsubscribe for newsletter (RFC 8058, no UI)
     "/api/unsubscribe/:token/opt-out": {
       async POST(req) {
         try {
@@ -740,6 +1218,52 @@ const server = Bun.serve({
       },
     },
 
+    // Granular actions via the unified page
+    "/api/unsubscribe/:token/newsletter-opt-out": {
+      async POST(req) {
+        try {
+          const email = await resolveEmailFromToken(req.params.token);
+          if (!email) return json({ ok: false }, 404);
+          await optOutNewsletterByEmail(email);
+          return json({ ok: true });
+        } catch (err) {
+          console.error("POST /api/unsubscribe/newsletter-opt-out error:", err);
+          return json({ error: "Internal server error" }, 500);
+        }
+      },
+    },
+
+    "/api/unsubscribe/:token/zoom-opt-out": {
+      async POST(req) {
+        try {
+          const email = await resolveEmailFromToken(req.params.token);
+          if (!email) return json({ ok: false }, 404);
+          await deleteZoomByEmail(email);
+          return json({ ok: true });
+        } catch (err) {
+          console.error("POST /api/unsubscribe/zoom-opt-out error:", err);
+          return json({ error: "Internal server error" }, 500);
+        }
+      },
+    },
+
+    "/api/unsubscribe/:token/all": {
+      async POST(req) {
+        try {
+          const email = await resolveEmailFromToken(req.params.token);
+          if (!email) return json({ ok: false }, 404);
+          await Promise.all([
+            optOutNewsletterByEmail(email),
+            deleteZoomByEmail(email),
+          ]);
+          return json({ ok: true });
+        } catch (err) {
+          console.error("POST /api/unsubscribe/all error:", err);
+          return json({ error: "Internal server error" }, 500);
+        }
+      },
+    },
+
     "/api/unsubscribe/:token/delete": {
       async POST(req) {
         try {
@@ -748,6 +1272,103 @@ const server = Bun.serve({
           return json({ ok: true });
         } catch (err) {
           console.error("POST /api/unsubscribe/delete error:", err);
+          return json({ error: "Internal server error" }, 500);
+        }
+      },
+    },
+
+    // Redirect old zoom unsubscribe links to the unified page
+    "/api/zoom-abmelden/:token": {
+      GET(req) {
+        const token = encodeURIComponent(req.params.token);
+        return Response.redirect(
+          `${getBaseUrl(req)}/abmelden/${token}?from=zoom`,
+          302,
+        );
+      },
+    },
+
+    // One-click zoom registration from newsletter invite email.
+    // The token is the signer's unsubscribe_token (fresh per campaign send).
+    // ?delegiert=1 → registers as delegate, ?delegiert=0 (default) → non-delegate.
+    "/api/zoom-anmelden/:token": {
+      async GET(req) {
+        const { token } = req.params;
+        const delegiert = req.url.includes("delegiert=1");
+        try {
+          const signer = await getSignerForZoomInvite(token);
+          if (!signer) {
+            return new Response(
+              zoomUnsubPage(
+                `<h1>Link abgelaufen</h1><p>Dieser Link ist leider nicht mehr g\u00fcltig. Du kannst dich auf <a href="${BASE_URL}/#zoom">gehaltsdeckel.jetzt</a> direkt anmelden.</p>`,
+              ),
+              {
+                status: 410,
+                headers: { "Content-Type": "text/html; charset=utf-8" },
+              },
+            );
+          }
+
+          await insertZoomRegistration({
+            name: signer.name,
+            email: signer.email,
+            kv: signer.kreisverband,
+            delegierter: delegiert,
+          });
+
+          try {
+            const cfg = await getZoomConfig();
+            await sendZoomConfirmationEmail({
+              to: signer.email,
+              name: signer.name,
+              eventLabel: cfg.label,
+              icsUrl: cfg.icsUrl,
+              linkTimingText: offsetPhrase(cfg.linkOffsetHours),
+            });
+          } catch (mailErr) {
+            console.error(
+              "[zoom-anmelden] confirmation email failed:",
+              mailErr,
+            );
+          }
+
+          const delegateNote = delegiert
+            ? `<p>Du hast dich als <strong>Delegierte/r</strong> angemeldet.</p>`
+            : "";
+          return new Response(
+            zoomUnsubPage(
+              `<h1>Du bist dabei!</h1><p>Wir haben deine Anmeldung f\u00fcr das Zoom-Treffen gespeichert, <strong>${sanitize(signer.name.split(/\s/)[0])}</strong>.</p>${delegateNote}<p>Du bekommst kurz vor dem Termin den Einwahllink per E-Mail.</p>`,
+            ),
+            {
+              headers: {
+                "Content-Type": "text/html; charset=utf-8",
+                ...securityHeaders,
+              },
+            },
+          );
+        } catch (err) {
+          console.error("GET /api/zoom-anmelden error:", err);
+          return new Response(
+            zoomUnsubPage(
+              `<h1>Fehler</h1><p>Etwas ist schiefgelaufen. Bitte versuche es sp\u00e4ter erneut oder melde dich direkt auf <a href="${BASE_URL}/#zoom">gehaltsdeckel.jetzt</a> an.</p>`,
+            ),
+            {
+              status: 500,
+              headers: { "Content-Type": "text/html; charset=utf-8" },
+            },
+          );
+        }
+      },
+    },
+
+    // One-click List-Unsubscribe for zoom (RFC 8058, no UI)
+    "/api/zoom-abmelden/:token/opt-out": {
+      async POST(req) {
+        try {
+          await deleteZoomRegistrationByUnsubscribeToken(req.params.token);
+          return json({ ok: true });
+        } catch (err) {
+          console.error("POST /api/zoom-abmelden/opt-out error:", err);
           return json({ error: "Internal server error" }, 500);
         }
       },
@@ -857,6 +1478,14 @@ const server = Bun.serve({
           const templateId = parseInt(body.template_id, 10);
           const subject = sanitize(body.subject, 240);
           const scheduledAt = new Date(body.scheduled_at);
+          const audience = [
+            "newsletter",
+            "zoom",
+            "zoom_delegates",
+            "newsletter_zoom_invite",
+          ].includes(body.audience)
+            ? body.audience
+            : "newsletter";
           if (!templateId || !subject || Number.isNaN(scheduledAt.getTime())) {
             return json({ error: "Invalid campaign" }, 400);
           }
@@ -864,6 +1493,7 @@ const server = Bun.serve({
             templateId,
             subject,
             scheduledAt,
+            audience,
           });
           if (!campaign) return json({ error: "Template not found" }, 404);
           return json(campaign, 201);
@@ -883,7 +1513,123 @@ const server = Bun.serve({
 
     "/api/admin/stats": {
       async GET(req) {
-        return adminJson(req, async () => json(await getNewsletterStats()));
+        return adminJson(req, async () => {
+          const [newsletter, zoom] = await Promise.all([
+            getNewsletterStats(),
+            getZoomCounts(),
+          ]);
+          return json({ ...newsletter, ...zoom });
+        });
+      },
+    },
+
+    "/api/admin/zoom-registrations": {
+      async GET(req) {
+        return adminJson(req, async () => json(await listZoomRegistrations()));
+      },
+    },
+
+    "/api/admin/zoom-mailings": {
+      async GET(req) {
+        return adminJson(req, async () => {
+          const cfg = await getZoomConfig();
+          return json({
+            eventAt: cfg.eventAtIso,
+            eventLabel: cfg.label,
+            durationMin: cfg.durationMin,
+            linkOffsetHours: cfg.linkOffsetHours,
+            reminderOffsetHours: cfg.reminderOffsetHours,
+            link: cfg.link,
+            hasLink: Boolean(cfg.link),
+            mailings: await listZoomMailings(),
+          });
+        });
+      },
+    },
+
+    "/api/admin/zoom-settings": {
+      async POST(req) {
+        return adminJson(req, async () => {
+          if (bodyTooLarge(req))
+            return json({ error: "Payload too large" }, 413);
+          const body = await req.json();
+          const eventDate = new Date(body.eventAt);
+          if (Number.isNaN(eventDate.getTime())) {
+            return json({ error: "Ungültiges Datum" }, 400);
+          }
+          const linkOffsetHours = parseInt(body.linkOffsetHours, 10);
+          const reminderOffsetHours = parseInt(body.reminderOffsetHours, 10);
+          if (
+            !Number.isInteger(linkOffsetHours) ||
+            linkOffsetHours < 0 ||
+            !Number.isInteger(reminderOffsetHours) ||
+            reminderOffsetHours < 0
+          ) {
+            return json({ error: "Ungültige Timing-Werte" }, 400);
+          }
+
+          const prev = await getZoomConfig();
+          const eventChanged = eventDate.toISOString() !== prev.eventAtIso;
+
+          const zoomLink = String(body.zoomLink ?? "").trim();
+          await setZoomSettings({
+            zoom_event_at: eventDate.toISOString(),
+            zoom_link_offset_hours: linkOffsetHours,
+            zoom_reminder_offset_hours: reminderOffsetHours,
+            zoom_link: zoomLink,
+          });
+          if (eventChanged) await resetZoomMailings();
+
+          const cfg = await getZoomConfig();
+          return json({
+            ok: true,
+            mailingsReset: eventChanged,
+            eventAt: cfg.eventAtIso,
+            eventLabel: cfg.label,
+            linkOffsetHours: cfg.linkOffsetHours,
+            reminderOffsetHours: cfg.reminderOffsetHours,
+          });
+        });
+      },
+    },
+
+    "/api/admin/zoom-test-send": {
+      async POST(req) {
+        return adminJson(req, async () => {
+          if (bodyTooLarge(req))
+            return json({ error: "Payload too large" }, 413);
+          const body = await req.json();
+          const to = String(body.to || "").trim();
+          const kind = body.kind;
+          if (!to || !isValidEmail(to)) {
+            return json({ error: "Ungültige E-Mail-Adresse" }, 400);
+          }
+          if (!["confirmation", "link", "reminder"].includes(kind)) {
+            return json({ error: "Unbekannter Mail-Typ" }, 400);
+          }
+          const cfg = await getZoomConfig();
+          if (kind === "confirmation") {
+            await sendZoomConfirmationEmail({
+              to,
+              name: "Test-Empfänger",
+              eventLabel: cfg.label,
+              icsUrl: cfg.icsUrl,
+              linkTimingText: offsetPhrase(cfg.linkOffsetHours),
+            });
+          } else {
+            const payload = await buildZoomMailPayload(
+              kind,
+              { name: "Test-Empfänger", email: to },
+              "test",
+              cfg,
+            );
+            await sendRenderedEmail({
+              ...payload,
+              subject: `[TEST] ${payload.subject}`,
+            });
+          }
+          return json({ ok: true });
+        });
       },
     },
 
@@ -893,6 +1639,7 @@ const server = Bun.serve({
           if (bodyTooLarge(req))
             return json({ error: "Payload too large" }, 413);
           const body = await req.json();
+          const cfg = await getZoomConfig();
           return json({
             html: renderEmailHtml(sanitizeHtml(body.html_body), {
               name: "Ada Beispiel",
@@ -901,6 +1648,11 @@ const server = Bun.serve({
               deleteUrl: `${BASE_URL}/api/delete/beispiel`,
               signerCount: "1.000",
               unsubscribeUrl: `${BASE_URL}/abmelden/beispiel`,
+              eventLabel: cfg.label,
+              zoomLink: cfg.link,
+              linkInfo: buildZoomLinkInfo(cfg.link),
+              zoomJaUrl: `${BASE_URL}/api/zoom-anmelden/beispiel?delegiert=0`,
+              zoomJaDelegiertUrl: `${BASE_URL}/api/zoom-anmelden/beispiel?delegiert=1`,
             }),
           });
         });
@@ -925,23 +1677,61 @@ const server = Bun.serve({
           if (!template) {
             return json({ error: "Vorlage nicht gefunden" }, 404);
           }
+          const audience = [
+            "newsletter",
+            "zoom",
+            "zoom_delegates",
+            "newsletter_zoom_invite",
+          ].includes(body.audience)
+            ? body.audience
+            : "newsletter";
+          const isZoom = audience === "zoom" || audience === "zoom_delegates";
+          const isZoomInvite = audience === "newsletter_zoom_invite";
           const stats = await getNewsletterStats();
           const signerCount = stats.signerCount?.toLocaleString("de-DE") || "0";
-          const vars = {
-            name: "Test-Empfänger",
-            firstName: "Test-Empfänger",
-            signerCount,
-            unsubscribeUrl: `${BASE_URL}/abmelden/test`,
-            confirmUrl: `${BASE_URL}/api/confirm/test`,
-            deleteUrl: `${BASE_URL}/api/delete/test`,
-          };
+          const zoomCfg = isZoom || isZoomInvite ? await getZoomConfig() : null;
+          const vars = isZoom
+            ? {
+                name: "Test-Empfänger",
+                firstName: "Test-Empfänger",
+                eventLabel: zoomCfg.label,
+                zoomLink: zoomCfg.link,
+                linkInfo: buildZoomLinkInfo(zoomCfg.link),
+                unsubscribeUrl: `${BASE_URL}/abmelden/test?from=zoom`,
+              }
+            : isZoomInvite
+              ? {
+                  name: "Test-Empfänger",
+                  firstName: "Test-Empfänger",
+                  signerCount,
+                  eventLabel: zoomCfg.label,
+                  zoomJaUrl: `${BASE_URL}/api/zoom-anmelden/test?delegiert=0`,
+                  zoomJaDelegiertUrl: `${BASE_URL}/api/zoom-anmelden/test?delegiert=1`,
+                  unsubscribeUrl: `${BASE_URL}/abmelden/test`,
+                }
+              : {
+                  name: "Test-Empfänger",
+                  firstName: "Test-Empfänger",
+                  signerCount,
+                  unsubscribeUrl: `${BASE_URL}/abmelden/test`,
+                  confirmUrl: `${BASE_URL}/api/confirm/test`,
+                  deleteUrl: `${BASE_URL}/api/delete/test`,
+                };
           const html = renderEmailHtml(template.html_body, vars);
           const subject = interpolateTemplate(
             String(body.subject || template.subject || ""),
             vars,
           );
-          const testUnsubHeaders = buildUnsubscribeHeaders(`${BASE_URL}/api/unsubscribe/test/opt-out`);
-          await sendRenderedEmail({ to, subject: `[TEST] ${subject}`, html, headers: testUnsubHeaders });
+          const optOutUrl = isZoom
+            ? `${BASE_URL}/api/zoom-abmelden/test/opt-out`
+            : `${BASE_URL}/api/unsubscribe/test/opt-out`;
+          const testUnsubHeaders = buildUnsubscribeHeaders(optOutUrl);
+          await sendRenderedEmail({
+            to,
+            subject: `[TEST] ${subject}`,
+            html,
+            headers: testUnsubHeaders,
+          });
           return json({ ok: true });
         });
       },
@@ -1068,7 +1858,12 @@ const server = Bun.serve({
           const dismissedSet = new Set(
             dismissed.map((d) => `${d.canonical}\0${d.outlier}`),
           );
-          const groups = findOutlierGroups(occupations, "occupation", null, normalizeOccupation)
+          const groups = findOutlierGroups(
+            occupations,
+            "occupation",
+            null,
+            normalizeOccupation,
+          )
             .map((g) => ({
               ...g,
               outliers: g.outliers.filter(
@@ -1136,6 +1931,7 @@ ensureKvStateCacheTable()
 function shutdown() {
   console.log("Shutting down...");
   clearInterval(campaignWorker);
+  clearInterval(zoomMailingWorker);
   close().then(() => process.exit(0));
 }
 process.on("SIGTERM", shutdown);

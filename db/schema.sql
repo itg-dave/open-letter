@@ -97,3 +97,40 @@ CREATE TABLE IF NOT EXISTS occupation_not_typo (
   created_at    TIMESTAMPTZ DEFAULT NOW(),
   PRIMARY KEY (canonical, outlier)
 );
+
+CREATE TABLE IF NOT EXISTS zoom_registrations (
+  id            SERIAL PRIMARY KEY,
+  name          TEXT NOT NULL,
+  email         TEXT NOT NULL UNIQUE,
+  kreisverband  TEXT DEFAULT '',
+  delegierter   BOOLEAN DEFAULT FALSE,
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_zoom_reg_created
+  ON zoom_registrations (created_at DESC);
+
+ALTER TABLE zoom_registrations ADD COLUMN IF NOT EXISTS unsubscribe_token TEXT UNIQUE;
+
+CREATE INDEX IF NOT EXISTS idx_zoom_reg_unsub
+  ON zoom_registrations (unsubscribe_token)
+  WHERE unsubscribe_token IS NOT NULL;
+
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS audience TEXT NOT NULL DEFAULT 'newsletter';
+
+CREATE TABLE IF NOT EXISTS zoom_event_mailings (
+  kind            TEXT PRIMARY KEY,
+  status          TEXT NOT NULL DEFAULT 'sending',
+  recipient_count INTEGER,
+  sent_at         TIMESTAMPTZ,
+  updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS app_settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Track how many emails were sent so a failed campaign can resume mid-list.
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS sent_offset INTEGER NOT NULL DEFAULT 0;

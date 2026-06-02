@@ -154,6 +154,9 @@ export default function App() {
   const [kvGroups, setKvGroups] = useState([]);
   const [signFormKvNames, setSignFormKvNames] = useState([]);
   const [signFormOccNames, setSignFormOccNames] = useState([]);
+  const [zoomError, setZoomError] = useState(null);
+  const [zoomCount, setZoomCount] = useState(0);
+  const [zoomEventAt, setZoomEventAt] = useState(null);
 
   const emailTrapRef = useFocusTrap(!!emailModal);
   const successTrapRef = useFocusTrap(showSuccess);
@@ -204,6 +207,21 @@ export default function App() {
     fetchStats();
     fetchSigners("alle", "", 0, false);
   }, [fetchStats, fetchSigners]);
+
+  const fetchZoomCount = useCallback(async () => {
+    try {
+      const res = await fetch("/api/zoom-count");
+      if (res.ok) {
+        const data = await res.json();
+        setZoomCount(data.count || 0);
+        if (data.eventAt) setZoomEventAt(data.eventAt);
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    fetchZoomCount();
+  }, [fetchZoomCount]);
 
   useEffect(() => {
     (async () => {
@@ -344,6 +362,30 @@ export default function App() {
     }
   }, []);
 
+  const handleZoomSubmit = useCallback(
+    async (data) => {
+      setZoomError(null);
+      try {
+        const res = await fetch("/api/zoom-register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+        const result = await res.json();
+        if (!res.ok) {
+          setZoomError(result.error || "Ein Fehler ist aufgetreten.");
+          return false;
+        }
+        fetchZoomCount();
+        return true;
+      } catch {
+        setZoomError("Verbindung fehlgeschlagen. Bitte versuche es erneut.");
+        return false;
+      }
+    },
+    [fetchZoomCount],
+  );
+
   useEffect(() => {
     if (!emailModal) {
       setResendCooldown(0);
@@ -426,6 +468,11 @@ export default function App() {
     MILESTONES.find((m) => m > total) ?? MILESTONES[MILESTONES.length - 1];
   const pct = Math.min(100, Math.round((total / ZIEL) * 100));
 
+  // Hide the Störer and zoom signup form 2 hours after the event
+  const zoomOpen =
+    !zoomEventAt ||
+    Date.now() < new Date(zoomEventAt).getTime() + 2 * 60 * 60 * 1000;
+
   return (
     <>
       <a href="#main" className="skip-link">
@@ -473,6 +520,17 @@ export default function App() {
           >
             Unterstützer*innen
           </a>
+          {zoomOpen && (
+            <a
+              href="#zoom"
+              onClick={(e) => {
+                e.preventDefault();
+                scrollTo("zoom");
+              }}
+            >
+              Zoom-Treffen
+            </a>
+          )}
         </nav>
         <button
           className="cta topbar-cta"
@@ -531,6 +589,16 @@ export default function App() {
           Unterstützer*innen
         </a>
         <a
+          href="#zoom"
+          onClick={(e) => {
+            e.preventDefault();
+            setNavOpen(false);
+            scrollTo("zoom");
+          }}
+        >
+          Zoom-Treffen
+        </a>
+        <a
           href="#unterzeichnen"
           className="mobile-nav-cta"
           onClick={(e) => {
@@ -558,39 +626,61 @@ export default function App() {
             </h1>
 
             <div className="hero-row">
-              <div
-                className="counter-card"
-                aria-label={`${total.toLocaleString("de-DE")} von ${ZIEL.toLocaleString("de-DE")} Unterschriften`}
-              >
-                <div className="label">Unterschriften</div>
-                <div className="num">
-                  {total.toLocaleString("de-DE")}
-                  <span className="unit">/ {ZIEL.toLocaleString("de-DE")}</span>
-                </div>
-                <div className="meta">
-                  Ziel: {ZIEL.toLocaleString("de-DE")} verifizierte
-                  Mitzeichner*innen
-                </div>
+              <div className="counter-wrap">
                 <div
-                  className="goal-bar"
-                  role="progressbar"
-                  aria-label="Fortschritt zum Unterschriftenziel"
-                  aria-valuenow={pct}
-                  aria-valuemin={0}
-                  aria-valuemax={100}
+                  className="counter-card"
+                  aria-label={`${total.toLocaleString("de-DE")} von ${ZIEL.toLocaleString("de-DE")} Unterschriften`}
                 >
-                  <div style={{ transform: `scaleX(${pct / 100})` }}></div>
+                  <div className="label">Unterschriften</div>
+                  <div className="num">
+                    {total.toLocaleString("de-DE")}
+                    <span className="unit">
+                      / {ZIEL.toLocaleString("de-DE")}
+                    </span>
+                  </div>
+                  <div className="meta">
+                    Ziel: {ZIEL.toLocaleString("de-DE")} verifizierte
+                    Mitzeichner*innen
+                  </div>
+                  <div
+                    className="goal-bar"
+                    role="progressbar"
+                    aria-label="Fortschritt zum Unterschriftenziel"
+                    aria-valuenow={pct}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                  >
+                    <div style={{ transform: `scaleX(${pct / 100})` }}></div>
+                  </div>
+                  <div className="goal-meta">
+                    <span>{pct}% erreicht</span>
+                    <span>
+                      Aktualisiert{" "}
+                      {new Date().toLocaleTimeString("de-DE", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                  </div>
                 </div>
-                <div className="goal-meta">
-                  <span>{pct}% erreicht</span>
-                  <span>
-                    Aktualisiert{" "}
-                    {new Date().toLocaleTimeString("de-DE", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </span>
-                </div>
+
+                {total >= 2000 && zoomOpen && (
+                  <button
+                    className="stoerer"
+                    onClick={() => scrollTo("zoom")}
+                    aria-label="Wir sind 2000 — jetzt zum Zoom-Treffen anmelden"
+                  >
+                    <span className="stoerer-head">Wir sind 2000!</span>
+                    <span className="stoerer-body">
+                      Jetzt treffen wir uns zum Zoom und planen die nächsten
+                      Schritte.
+                    </span>
+                    <span className="stoerer-date">9.6. · 20 Uhr</span>
+                    <span className="stoerer-cta">
+                      Sei dabei! <span aria-hidden="true">→</span>
+                    </span>
+                  </button>
+                )}
               </div>
 
               <div
@@ -967,6 +1057,56 @@ export default function App() {
             )}
           </div>
         </section>
+
+        {zoomOpen && (
+          <section
+            className="section sign-section zoom-section"
+            id="zoom"
+            aria-label="Anmeldung zum Zoom-Treffen"
+          >
+            <div className="section-inner">
+              <div className="sign-grid">
+                <div className="sign-intro">
+                  <span className="section-num">04 / Zoom-Treffen</span>
+                  <h2>
+                    Wir treffen uns
+                    <br />
+                    <span className="rot">am 9. Juni.</span>
+                  </h2>
+                  <p className="zoom-when">
+                    <strong>Montag, 9. Juni · 20 Uhr · per Zoom</strong>
+                  </p>
+                  <ul>
+                    <li>
+                      Wir planen die öffentliche Übergabe des offenen Briefes.
+                    </li>
+                    <li>
+                      Wir sprechen über eine Choreografie auf dem Parteitag.
+                    </li>
+                    <li>Wir verabreden die nächsten gemeinsamen Schritte.</li>
+                  </ul>
+                  {zoomCount > 0 && (
+                    <p className="zoom-count">
+                      <b>{zoomCount.toLocaleString("de-DE")}</b> sind schon
+                      dabei.
+                    </p>
+                  )}
+                  <p className="privacy">
+                    Den Einwahllink schicken wir dir vor dem Termin per E-Mail.
+                    Deine Angaben nutzen wir ausschließlich für die Organisation
+                    des Treffens.
+                  </p>
+                </div>
+
+                <ZoomForm
+                  onSubmit={handleZoomSubmit}
+                  serverError={zoomError}
+                  kvNames={signFormKvNames}
+                />
+              </div>
+            </div>
+          </section>
+        )}
       </main>
 
       <footer>
@@ -1523,6 +1663,249 @@ const SignForm = memo(function SignForm({
       <p className="form-legal">
         Mit Klick auf „Mitzeichnen" schicken wir dir einen Bestätigungslink an
         deine E-Mail. Erst danach zählt deine Unterschrift.
+      </p>
+    </form>
+  );
+});
+
+const ZoomForm = memo(function ZoomForm({ onSubmit, serverError, kvNames }) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [kv, setKv] = useState("");
+  const [delegierter, setDelegierter] = useState(false);
+  const [showSuggest, setShowSuggest] = useState(false);
+  const [kvActiveIndex, setKvActiveIndex] = useState(-1);
+  const [errors, setErrors] = useState({});
+  const [submitting, setSubmitting] = useState(false);
+  const [done, setDone] = useState(false);
+  const nameRef = useRef(null);
+  const emailRef = useRef(null);
+  const kvInputRef = useRef(null);
+
+  const kvMatches = useMemo(() => {
+    if (!kv) return [];
+    const q = kv.toLowerCase();
+    return kvNames.filter((k) => k.toLowerCase().includes(q)).slice(0, 6);
+  }, [kv, kvNames]);
+
+  function validate() {
+    const e = {};
+    if (name.trim().length < 2)
+      e.name = "Bitte gib deinen vollständigen Namen an.";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      e.email = "Bitte gib eine gültige E-Mail-Adresse an.";
+    setErrors(e);
+    if (e.name) nameRef.current?.focus();
+    else if (e.email) emailRef.current?.focus();
+    return Object.keys(e).length === 0;
+  }
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!validate()) return;
+    setSubmitting(true);
+    const ok = await onSubmit({
+      name: name.trim(),
+      email: email.trim(),
+      kv: kv.trim().replace(/^KV\s*/i, ""),
+      delegierter,
+    });
+    setSubmitting(false);
+    if (ok) {
+      setDone(true);
+      setName("");
+      setEmail("");
+      setKv("");
+      setDelegierter(false);
+      setErrors({});
+    }
+  }
+
+  if (done) {
+    return (
+      <div className="form-card zoom-done" role="status">
+        <span className="badge">Angemeldet</span>
+        <div className="check-anim">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="3.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+        </div>
+        <h3>Du bist dabei.</h3>
+        <p className="sub2">
+          Wir haben dir eine Bestätigung per E-Mail geschickt. Den Einwahllink
+          bekommst du rechtzeitig vor dem Termin am 9. Juni, 20 Uhr.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <form className="form-card" onSubmit={submit} noValidate>
+      <span className="badge">Zoom-Anmeldung</span>
+      <h3>Anmelden in 30 Sekunden</h3>
+      <div className="sub2">Den Link schicken wir dir per E-Mail.</div>
+
+      {serverError && (
+        <div className="err" role="alert">
+          {serverError}
+        </div>
+      )}
+
+      <div className="field">
+        <label htmlFor="zoom-name">Name</label>
+        <input
+          id="zoom-name"
+          ref={nameRef}
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="z. B. Anna Berger"
+          className={errors.name ? "invalid" : ""}
+          aria-invalid={!!errors.name}
+          aria-describedby={errors.name ? "zoom-err-name" : undefined}
+          autoComplete="name"
+        />
+        {errors.name && (
+          <div className="err" id="zoom-err-name">
+            {errors.name}
+          </div>
+        )}
+      </div>
+
+      <div className="field">
+        <label htmlFor="zoom-email">
+          E-Mail{" "}
+          <span className="opt"> für die Bestätigung und den Zoom-Link</span>
+        </label>
+        <input
+          id="zoom-email"
+          ref={emailRef}
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="anna@example.org"
+          className={errors.email ? "invalid" : ""}
+          aria-invalid={!!errors.email}
+          aria-describedby={errors.email ? "zoom-err-email" : undefined}
+          autoComplete="email"
+        />
+        {errors.email && (
+          <div className="err" id="zoom-err-email">
+            {errors.email}
+          </div>
+        )}
+      </div>
+
+      <div className="field" style={{ position: "relative" }}>
+        <label htmlFor="zoom-kv">
+          Kreisverband <span className="opt"> optional</span>
+        </label>
+        <input
+          id="zoom-kv"
+          ref={kvInputRef}
+          type="text"
+          value={kv}
+          onChange={(e) => {
+            setKv(e.target.value);
+            setShowSuggest(true);
+            setKvActiveIndex(-1);
+          }}
+          onFocus={() => setShowSuggest(true)}
+          onBlur={() => {
+            setTimeout(() => {
+              setShowSuggest(false);
+              setKvActiveIndex(-1);
+            }, 150);
+            setKv((v) => v.replace(/^KV\s*/i, ""));
+          }}
+          onKeyDown={(e) => {
+            if (!showSuggest || !kvMatches.length) return;
+            if (e.key === "ArrowDown") {
+              e.preventDefault();
+              setKvActiveIndex((i) => Math.min(i + 1, kvMatches.length - 1));
+            } else if (e.key === "ArrowUp") {
+              e.preventDefault();
+              setKvActiveIndex((i) => Math.max(i - 1, 0));
+            } else if (e.key === "Enter" && kvActiveIndex >= 0) {
+              e.preventDefault();
+              setKv(kvMatches[kvActiveIndex]);
+              setShowSuggest(false);
+              setKvActiveIndex(-1);
+            } else if (e.key === "Escape") {
+              setShowSuggest(false);
+              setKvActiveIndex(-1);
+              kvInputRef.current?.focus();
+            }
+          }}
+          placeholder="z. B. Berlin-Neukölln"
+          autoComplete="off"
+          role="combobox"
+          aria-expanded={showSuggest && kv && kvMatches.length > 0}
+          aria-autocomplete="list"
+          aria-controls="zoom-kv-listbox"
+          aria-activedescendant={
+            kvActiveIndex >= 0 ? `zoom-kv-option-${kvActiveIndex}` : undefined
+          }
+        />
+        {showSuggest && kv && kvMatches.length > 0 && (
+          <div
+            id="zoom-kv-listbox"
+            role="listbox"
+            className="autocomplete-dropdown"
+          >
+            {kvMatches.map((k, i) => (
+              <div
+                key={k}
+                id={`zoom-kv-option-${i}`}
+                role="option"
+                aria-selected={i === kvActiveIndex}
+                onMouseDown={() => {
+                  setKv(k);
+                  setShowSuggest(false);
+                  setKvActiveIndex(-1);
+                }}
+                className={
+                  "autocomplete-option" + (i === kvActiveIndex ? " active" : "")
+                }
+              >
+                {k}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="checks">
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={delegierter}
+            onChange={(e) => setDelegierter(e.target.checked)}
+          />
+          <span>
+            Ich bin <strong>Delegierte*r zum Parteitag.</strong>{" "}
+            <span className="opt">(optional)</span>
+          </span>
+        </label>
+      </div>
+
+      <button type="submit" className="submit" disabled={submitting}>
+        {submitting ? "Wird gesendet…" : "Zum Zoom anmelden"}{" "}
+        <span className="arrow" aria-hidden="true">
+          →
+        </span>
+      </button>
+      <p className="form-legal">
+        Wir nutzen deine Angaben nur zur Organisation des Treffens und schicken
+        dir den Einwahllink rechtzeitig per E-Mail.
       </p>
     </form>
   );

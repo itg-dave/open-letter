@@ -43,7 +43,59 @@ const fallbackTemplates = {
       <p>Mit solidarischen Grüßen<br>Initiative Gehaltsdeckel</p>
     `,
   },
+  zoom_confirmation: {
+    subject: "Du bist dabei — Zoom am {{eventLabel}} — Gehaltsdeckel jetzt",
+    html_body: `
+      <p>Hallo {{firstName}},</p>
+      <p>danke für deine Anmeldung zum Zoom-Treffen der Unterzeichner*innen am <strong>{{eventLabel}}</strong>.</p>
+      <p>Wir sprechen gemeinsam über die öffentliche Übergabe und eine Choreografie auf dem Parteitag und planen die nächsten Schritte.</p>
+      {{linkInfo}}
+      <p>Bis dann und mit solidarischen Grüßen<br>Initiative Gehaltsdeckel</p>
+    `,
+  },
+  zoom_link: {
+    subject: "Dein Zoom-Link für das Treffen am {{eventLabel}}",
+    html_body: `
+      <p>Hallo {{firstName}},</p>
+      <p>morgen ist es so weit — unser Zoom-Treffen am <strong>{{eventLabel}}</strong>. Hier ist dein Einwahllink:</p>
+      {{linkInfo}}
+      <p>Den passenden Kalendereintrag findest du im Anhang (.ics) oder über den Button oben.</p>
+      <p>Bis morgen und mit solidarischen Grüßen<br>Initiative Gehaltsdeckel</p>
+    `,
+  },
+  zoom_reminder: {
+    subject: "Gleich geht's los — Zoom-Treffen in 2 Stunden",
+    html_body: `
+      <p>Hallo {{firstName}},</p>
+      <p>kleine Erinnerung: In rund 2 Stunden startet unser Zoom-Treffen am <strong>{{eventLabel}}</strong>.</p>
+      {{linkInfo}}
+      <p>Wir freuen uns auf dich!<br>Initiative Gehaltsdeckel</p>
+    `,
+  },
+  zoom_newsletter_invite: {
+    subject:
+      "Bist du dabei? Zoom-Treffen am {{eventLabel}} — Gehaltsdeckel jetzt",
+    html_body: `
+      <p>Hallo {{firstName}},</p>
+      <p>wir planen unser erstes gemeinsames Zoom-Treffen am <strong>{{eventLabel}}</strong> und würden uns freuen, wenn du dabei bist.</p>
+      <p>In dem Treffen wollen wir gemeinsam die nächsten Schritte besprechen — die öffentliche Übergabe des Briefes, eine Choreografie auf dem Parteitag und mehr.</p>
+      <p><strong>Melde dich jetzt mit einem Klick an:</strong></p>
+      <p>
+        <a href="{{zoomJaUrl}}" style="display:inline-block;background:#ff0000;color:#ffffff;font-family:'Work Sans',Arial,sans-serif;font-weight:700;font-size:15px;text-decoration:none;padding:13px 22px;border:2px solid #6f003c;">Ja, ich bin dabei</a>
+      </p>
+      <p>
+        <a href="{{zoomJaDelegiertUrl}}" style="display:inline-block;background:#6f003c;color:#ffffff;font-family:'Work Sans',Arial,sans-serif;font-weight:700;font-size:15px;text-decoration:none;padding:13px 22px;border:2px solid #6f003c;">Ja, ich bin dabei und bin Delegierte*r</a>
+      </p>
+      <p>Deine Angaben (Name, Kreisverband) werden automatisch aus deiner Unterschrift übernommen — du musst nichts weiter ausfüllen.</p>
+      <p>Mit solidarischen Grüßen<br>Initiative Gehaltsdeckel</p>
+    `,
+  },
 };
+
+// Email-safe "Zum Kalender hinzufügen" button (inline styles, no border-radius).
+export function zoomCalendarButton(icsUrl) {
+  return `<p><a href="${icsUrl}" style="display:inline-block;background:#ff0000;color:#ffffff;font-family:'Work Sans',Arial,sans-serif;font-weight:700;font-size:15px;text-decoration:none;padding:13px 22px;border:2px solid #6f003c;">Zum Kalender hinzufügen</a></p>`;
+}
 
 const emailCss = `
   body { margin: 0; padding: 24px; background: #ffffff; color: #6f003c; font-family: Inter, Arial, sans-serif; }
@@ -62,14 +114,25 @@ const emailCss = `
 `;
 
 function escapeHtml(str) {
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
-const URL_VARIABLES = new Set(["confirmUrl", "deleteUrl", "unsubscribeUrl"]);
+const URL_VARIABLES = new Set([
+  "confirmUrl",
+  "deleteUrl",
+  "unsubscribeUrl",
+  "linkInfo",
+  "zoomJaUrl",
+  "zoomJaDelegiertUrl",
+]);
 
 export function interpolateTemplate(value, variables = {}) {
   return String(value || "").replace(
-    /\{\{\s*(name|firstName|confirmUrl|deleteUrl|signerCount|unsubscribeUrl)\s*\}\}/g,
+    /\{\{\s*(name|firstName|confirmUrl|deleteUrl|signerCount|unsubscribeUrl|eventLabel|linkInfo|zoomJaUrl|zoomJaDelegiertUrl)\s*\}\}/g,
     (_, key) => {
       const raw = String(variables[key] ?? "");
       return URL_VARIABLES.has(key) ? raw : escapeHtml(raw);
@@ -114,7 +177,11 @@ export function htmlToText(html) {
 }
 
 function getEmailDomain(email) {
-  return String(email || "").split("@").pop() || "unknown";
+  return (
+    String(email || "")
+      .split("@")
+      .pop() || "unknown"
+  );
 }
 
 export function buildUnsubscribeHeaders(optOutUrl) {
@@ -124,7 +191,13 @@ export function buildUnsubscribeHeaders(optOutUrl) {
   };
 }
 
-export async function sendRenderedEmail({ to, subject, html, headers }) {
+export async function sendRenderedEmail({
+  to,
+  subject,
+  html,
+  headers,
+  attachments,
+}) {
   const toDomain = getEmailDomain(to);
   console.log(
     `[email] sending via=${transportSummary} toDomain=${toDomain} subject="${subject}"`,
@@ -147,6 +220,7 @@ export async function sendRenderedEmail({ to, subject, html, headers }) {
       html,
       text: htmlToText(html),
       ...(headers && { headers }),
+      ...(attachments && { attachments }),
     }),
   });
 
@@ -219,10 +293,19 @@ export async function sendBatchEmails(emails, idempotencyKey = null) {
   }
 }
 
-export async function sendDeletionEmail({ to, token, baseUrl, headers, unsubscribeUrl }) {
+export async function sendDeletionEmail({
+  to,
+  token,
+  baseUrl,
+  headers,
+  unsubscribeUrl,
+}) {
   console.log(`[email] deletion request toDomain=${getEmailDomain(to)}`);
   const deleteUrl = `${baseUrl}/api/delete/${token}`;
-  const rendered = await renderTemplateBySlug("deletion", { deleteUrl, unsubscribeUrl });
+  const rendered = await renderTemplateBySlug("deletion", {
+    deleteUrl,
+    unsubscribeUrl,
+  });
 
   await sendRenderedEmail({
     to,
@@ -232,12 +315,21 @@ export async function sendDeletionEmail({ to, token, baseUrl, headers, unsubscri
   });
 }
 
-export async function sendAlreadySignedEmail({ to, name, headers, unsubscribeUrl }) {
+export async function sendAlreadySignedEmail({
+  to,
+  name,
+  headers,
+  unsubscribeUrl,
+}) {
   console.log(
     `[email] already-signed notification toDomain=${getEmailDomain(to)}`,
   );
   const firstName = name.split(/\s/)[0];
-  const rendered = await renderTemplateBySlug("already_signed", { name, firstName, unsubscribeUrl });
+  const rendered = await renderTemplateBySlug("already_signed", {
+    name,
+    firstName,
+    unsubscribeUrl,
+  });
 
   await sendRenderedEmail({
     to,
@@ -247,7 +339,40 @@ export async function sendAlreadySignedEmail({ to, name, headers, unsubscribeUrl
   });
 }
 
-export async function sendVerificationEmail({ to, name, token, baseUrl, headers, unsubscribeUrl }) {
+export async function sendZoomConfirmationEmail({
+  to,
+  name,
+  eventLabel,
+  icsUrl,
+  linkTimingText = "einen Tag",
+}) {
+  console.log(`[email] zoom confirmation toDomain=${getEmailDomain(to)}`);
+  const firstName = name.split(/\s/)[0];
+  const linkInfo =
+    `<p>Den <strong>Zoom-Link bekommst du ${linkTimingText} vor dem Termin</strong> per E-Mail.</p>` +
+    (icsUrl ? zoomCalendarButton(icsUrl) : "");
+  const rendered = await renderTemplateBySlug("zoom_confirmation", {
+    name,
+    firstName,
+    eventLabel,
+    linkInfo,
+  });
+
+  await sendRenderedEmail({
+    to,
+    subject: rendered.subject,
+    html: rendered.html,
+  });
+}
+
+export async function sendVerificationEmail({
+  to,
+  name,
+  token,
+  baseUrl,
+  headers,
+  unsubscribeUrl,
+}) {
   console.log(`[email] verification toDomain=${getEmailDomain(to)}`);
   const confirmUrl = `${baseUrl}/api/confirm/${token}`;
   const firstName = name.split(/\s/)[0];

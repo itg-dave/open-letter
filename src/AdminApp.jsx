@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { DayPicker } from "react-day-picker";
 import { format, parse, isValid } from "date-fns";
 import { de } from "date-fns/locale";
@@ -16,6 +16,27 @@ import {
 } from "@tiptap/core";
 
 const TOKEN_KEY = "gehaltsdeckel_admin_token";
+const AUDIENCE_LABELS = {
+  newsletter: "Newsletter-Unterschreiber",
+  newsletter_zoom_invite: "Newsletter → Zoom-Einladung",
+  zoom: "Zoom-Anmelder",
+  zoom_delegates: "Delegierte (Zoom)",
+};
+
+function zoomMailingStatus(mailings, kind) {
+  const m = (mailings || []).find((x) => x.kind === kind);
+  if (!m) return "ausstehend";
+  if (m.status === "sent") {
+    const count = m.recipient_count != null ? ` (${m.recipient_count})` : "";
+    const when = m.sent_at
+      ? " am " + new Date(m.sent_at).toLocaleString("de-DE")
+      : "";
+    return `gesendet${count}${when}`;
+  }
+  if (m.status === "sending") return "läuft …";
+  if (m.status === "failed") return "fehlgeschlagen — wird erneut versucht";
+  return m.status;
+}
 const GERMAN_STATES = [
   "Baden-Württemberg",
   "Bayern",
@@ -41,6 +62,9 @@ const variables = [
   "deleteUrl",
   "signerCount",
   "unsubscribeUrl",
+  "eventLabel",
+  "zoomJaUrl",
+  "zoomJaDelegiertUrl",
 ];
 
 const TemplateVariable = Mark.create({
@@ -84,6 +108,17 @@ function authHeaders(token) {
   };
 }
 
+// ISO timestamp -> value for <input type="datetime-local"> in browser-local time.
+function isoToLocalInput(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+    `T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  );
+}
+
 function StatusBadge({ status }) {
   return <span className={`admin-status status-${status}`}>{status}</span>;
 }
@@ -107,6 +142,7 @@ function TemplateEditor({ token, template, onSaved, onDeleted }) {
   const [htmlBody, setHtmlBody] = useState(template?.html_body || "");
   const [preview, setPreview] = useState("");
   const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [message, setMessage] = useState("");
   const [linkInput, setLinkInput] = useState(null);
 
@@ -173,20 +209,25 @@ function TemplateEditor({ token, template, onSaved, onDeleted }) {
 
   async function save() {
     setSaving(true);
+    setSaved(false);
     setMessage("");
+    const start = Date.now();
     const res = await fetch(`/api/admin/templates/${template.id}`, {
       method: "PUT",
       headers: authHeaders(token),
       body: JSON.stringify({ subject, html_body: htmlBody }),
     });
+    const elapsed = Date.now() - start;
+    if (elapsed < 600) await new Promise((r) => setTimeout(r, 600 - elapsed));
     setSaving(false);
     if (!res.ok) {
       setMessage("Speichern fehlgeschlagen.");
       return;
     }
     const updated = await res.json();
-    setMessage("Gespeichert.");
+    setSaved(true);
     onSaved(updated);
+    setTimeout(() => setSaved(false), 2000);
   }
 
   if (!template) return <div className="admin-empty">Vorlage auswählen.</div>;
@@ -315,7 +356,11 @@ function TemplateEditor({ token, template, onSaved, onDeleted }) {
             <button type="button" onClick={applyLink}>
               OK
             </button>
-            <button type="button" aria-label="Abbrechen" onClick={() => setLinkInput(null)}>
+            <button
+              type="button"
+              aria-label="Abbrechen"
+              onClick={() => setLinkInput(null)}
+            >
               ✕
             </button>
           </div>
@@ -348,11 +393,11 @@ function TemplateEditor({ token, template, onSaved, onDeleted }) {
         <div className="admin-actions">
           <button
             type="button"
-            className="cta"
+            className={"cta" + (saved ? " cta--saved" : "")}
             onClick={save}
-            disabled={saving}
+            disabled={saving || saved}
           >
-            {saving ? "Speichert ..." : "Speichern"}
+            {saving ? "Speichert …" : saved ? "Gespeichert ✓" : "Speichern"}
           </button>
           {!template.system && (
             <button
@@ -386,10 +431,16 @@ export default function AdminApp() {
   const [selectedId, setSelectedId] = useState(null);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [campaigns, setCampaigns] = useState([]);
-  const [stats, setStats] = useState({ signerCount: 0, subscriberCount: 0 });
+  const [stats, setStats] = useState({
+    signerCount: 0,
+    subscriberCount: 0,
+    zoomCount: 0,
+    zoomDelegateCount: 0,
+  });
   const [newName, setNewName] = useState("");
   const [scheduleTemplate, setScheduleTemplate] = useState("");
   const [scheduleSubject, setScheduleSubject] = useState("");
+  const [audience, setAudience] = useState("newsletter");
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedTime, setSelectedTime] = useState("10:00");
   const [testEmail, setTestEmail] = useState("");
@@ -407,6 +458,15 @@ export default function AdminApp() {
   const [assigningKv, setAssigningKv] = useState(null);
   const [occOutlierGroups, setOccOutlierGroups] = useState([]);
   const [occMerging, setOccMerging] = useState(null);
+  const [zoomRegs, setZoomRegs] = useState([]);
+  const [zoomMailings, setZoomMailings] = useState(null);
+  const [zoomTestEmail, setZoomTestEmail] = useState("");
+  const [zoomTestStatus, setZoomTestStatus] = useState(null);
+  const [zoomEventAtInput, setZoomEventAtInput] = useState("");
+  const [zoomLinkInput, setZoomLinkInput] = useState("");
+  const [zoomLinkOffset, setZoomLinkOffset] = useState(24);
+  const [zoomReminderOffset, setZoomReminderOffset] = useState(2);
+  const [zoomSettingsStatus, setZoomSettingsStatus] = useState(null);
 
   function handleDateInput(e) {
     const raw = e.target.value;
@@ -488,6 +548,23 @@ export default function AdminApp() {
       if (res.ok) setSelectedTemplate(await res.json());
     });
   }, [api, selectedId, token]);
+
+  useEffect(() => {
+    if (tab !== "zoom" || !token) return;
+    api("/api/admin/zoom-registrations").then(async (res) => {
+      if (res.ok) setZoomRegs(await res.json());
+    });
+    api("/api/admin/zoom-mailings").then(async (res) => {
+      if (res.ok) {
+        const data = await res.json();
+        setZoomMailings(data);
+        setZoomEventAtInput(isoToLocalInput(data.eventAt));
+        setZoomLinkInput(data.link || "");
+        setZoomLinkOffset(data.linkOffsetHours ?? 24);
+        setZoomReminderOffset(data.reminderOffsetHours ?? 2);
+      }
+    });
+  }, [api, tab, token]);
 
   async function login(e) {
     e.preventDefault();
@@ -571,6 +648,7 @@ export default function AdminApp() {
         template_id: scheduleTemplate,
         subject: scheduleSubject,
         scheduled_at: scheduledAt.toISOString(),
+        audience,
       }),
     });
     if (res.ok) reloadCampaigns();
@@ -579,12 +657,21 @@ export default function AdminApp() {
   async function sendNow(e) {
     e.preventDefault();
     if (!scheduleTemplate) return;
+    if (
+      !window.confirm(
+        `Jetzt an „${AUDIENCE_LABELS[audience]}" (${audienceCount.toLocaleString(
+          "de-DE",
+        )} Empfänger*innen) senden?`,
+      )
+    )
+      return;
     const res = await api("/api/admin/campaigns", {
       method: "POST",
       body: JSON.stringify({
         template_id: scheduleTemplate,
         subject: scheduleSubject,
         scheduled_at: new Date().toISOString(),
+        audience,
       }),
     });
     if (res.ok) reloadCampaigns();
@@ -600,6 +687,7 @@ export default function AdminApp() {
         template_id: scheduleTemplate,
         subject: scheduleSubject,
         to: testEmail,
+        audience,
       }),
     });
     if (res.ok) {
@@ -616,17 +704,61 @@ export default function AdminApp() {
     if (res.ok) reloadCampaigns();
   }
 
+  async function saveZoomSettings(e) {
+    e.preventDefault();
+    if (!zoomEventAtInput) return;
+    setZoomSettingsStatus("saving");
+    const res = await api("/api/admin/zoom-settings", {
+      method: "POST",
+      body: JSON.stringify({
+        eventAt: new Date(zoomEventAtInput).toISOString(),
+        zoomLink: zoomLinkInput,
+        linkOffsetHours: Number(zoomLinkOffset),
+        reminderOffsetHours: Number(zoomReminderOffset),
+      }),
+    });
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setZoomSettingsStatus(data.mailingsReset ? "ok-reset" : "ok");
+      // reload status panel
+      api("/api/admin/zoom-mailings").then(async (r) => {
+        if (r.ok) setZoomMailings(await r.json());
+      });
+      setTimeout(() => setZoomSettingsStatus(null), 5000);
+    } else {
+      const data = await res.json().catch(() => ({}));
+      setZoomSettingsStatus(data.error || "Fehler beim Speichern");
+    }
+  }
+
+  async function sendZoomTest(kind) {
+    if (!zoomTestEmail) return;
+    setZoomTestStatus("sending");
+    const res = await api("/api/admin/zoom-test-send", {
+      method: "POST",
+      body: JSON.stringify({ to: zoomTestEmail, kind }),
+    });
+    if (res.ok) {
+      setZoomTestStatus("ok");
+      setTimeout(() => setZoomTestStatus(null), 4000);
+    } else {
+      const data = await res.json().catch(() => ({}));
+      setZoomTestStatus(data.error || "Fehler beim Senden");
+    }
+  }
+
   function logout() {
     if (!confirm("Wirklich abmelden?")) return;
     sessionStorage.removeItem(TOKEN_KEY);
     setToken("");
   }
 
-  const selectedTemplateSummary = useMemo(
-    () =>
-      templates.find((template) => String(template.id) === scheduleTemplate),
-    [templates, scheduleTemplate],
-  );
+  const audienceCount =
+    audience === "zoom"
+      ? stats.zoomCount
+      : audience === "zoom_delegates"
+        ? stats.zoomDelegateCount
+        : stats.subscriberCount;
 
   if (!token) {
     return (
@@ -676,6 +808,13 @@ export default function AdminApp() {
             onClick={() => setTab("campaigns")}
           >
             Versand
+          </button>
+          <button
+            className={tab === "zoom" ? "active" : ""}
+            aria-current={tab === "zoom" ? "page" : undefined}
+            onClick={() => setTab("zoom")}
+          >
+            Zoom
           </button>
           <button
             className={tab === "settings" ? "active" : ""}
@@ -745,6 +884,20 @@ export default function AdminApp() {
               onSubmit={scheduleCampaign}
             >
               <div className="admin-card-title">Versand planen</div>
+              <div className="field">
+                <label>Empfängergruppe</label>
+                <select
+                  value={audience}
+                  onChange={(e) => setAudience(e.target.value)}
+                >
+                  <option value="newsletter">Newsletter-Unterschreiber</option>
+                  <option value="newsletter_zoom_invite">
+                    Newsletter → Zoom-Einladung
+                  </option>
+                  <option value="zoom">Zoom-Anmelder (alle)</option>
+                  <option value="zoom_delegates">Nur Delegierte (Zoom)</option>
+                </select>
+              </div>
               <div className="field">
                 <label>Vorlage</label>
                 <select
@@ -818,12 +971,10 @@ export default function AdminApp() {
                   Jetzt senden
                 </button>
               </div>
-              {selectedTemplateSummary && (
-                <p className="admin-muted">
-                  Empfänger*innen:{" "}
-                  {stats.subscriberCount.toLocaleString("de-DE")}
-                </p>
-              )}
+              <p className="admin-muted">
+                Empfänger*innen ({AUDIENCE_LABELS[audience]}):{" "}
+                {audienceCount.toLocaleString("de-DE")}
+              </p>
 
               <div className="admin-test-send">
                 <div className="field">
@@ -869,7 +1020,10 @@ export default function AdminApp() {
                 <div className="campaign-row" key={campaign.id}>
                   <div>
                     <strong>{campaign.subject}</strong>
-                    <span>{campaign.template_name || "Vorlage gelöscht"}</span>
+                    <span>
+                      {campaign.template_name || "Vorlage gelöscht"} ·{" "}
+                      {AUDIENCE_LABELS[campaign.audience] || "Newsletter"}
+                    </span>
                     <small>
                       {new Date(campaign.scheduled_at).toLocaleString("de-DE", {
                         hour12: false,
@@ -877,6 +1031,11 @@ export default function AdminApp() {
                     </small>
                   </div>
                   <StatusBadge status={campaign.status} />
+                  {campaign.status === "failed" && campaign.sent_offset > 0 && (
+                    <small style={{ color: "#b45309" }}>
+                      {campaign.sent_offset} gesendet — wird fortgesetzt
+                    </small>
+                  )}
                   {campaign.status === "scheduled" && (
                     <button type="button" onClick={() => cancel(campaign.id)}>
                       Absagen
@@ -885,6 +1044,207 @@ export default function AdminApp() {
                 </div>
               ))}
             </div>
+          </div>
+        </section>
+      )}
+
+      {tab === "zoom" && (
+        <section className="section">
+          <div className="section-inner">
+            <form
+              className="admin-card"
+              style={{ marginBottom: 20 }}
+              onSubmit={saveZoomSettings}
+            >
+              <div className="admin-card-title">Termin & Versand-Timing</div>
+              <div className="field">
+                <label>Termin (Datum & Uhrzeit)</label>
+                <input
+                  type="datetime-local"
+                  value={zoomEventAtInput}
+                  onChange={(e) => setZoomEventAtInput(e.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label>Zoom-Link</label>
+                <input
+                  type="url"
+                  value={zoomLinkInput}
+                  onChange={(e) => setZoomLinkInput(e.target.value)}
+                  placeholder="https://zoom.us/j/..."
+                />
+              </div>
+              <div className="admin-date-row">
+                <div className="field">
+                  <label>Link-Mail: Stunden vor dem Termin</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={zoomLinkOffset}
+                    onChange={(e) => setZoomLinkOffset(e.target.value)}
+                  />
+                </div>
+                <div className="field">
+                  <label>Erinnerung: Stunden vor dem Termin</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={zoomReminderOffset}
+                    onChange={(e) => setZoomReminderOffset(e.target.value)}
+                  />
+                </div>
+              </div>
+              <p className="admin-muted">
+                Bei Änderung des Termins wird der Versand-Status zurückgesetzt,
+                sodass Link-Mail und Erinnerung neu ausgelöst werden.
+              </p>
+              <div className="admin-actions">
+                <button
+                  className="cta"
+                  type="submit"
+                  disabled={
+                    !zoomEventAtInput || zoomSettingsStatus === "saving"
+                  }
+                >
+                  {zoomSettingsStatus === "saving"
+                    ? "Wird gespeichert…"
+                    : "Speichern"}
+                </button>
+              </div>
+              {zoomSettingsStatus === "ok" && (
+                <p className="admin-test-feedback admin-test-ok">Gespeichert</p>
+              )}
+              {zoomSettingsStatus === "ok-reset" && (
+                <p className="admin-test-feedback admin-test-ok">
+                  Gespeichert · Versand-Status zurückgesetzt
+                </p>
+              )}
+              {zoomSettingsStatus &&
+                !["ok", "ok-reset", "saving"].includes(zoomSettingsStatus) && (
+                  <p className="admin-test-feedback admin-test-error">
+                    {zoomSettingsStatus}
+                  </p>
+                )}
+            </form>
+
+            {zoomMailings && (
+              <div className="admin-card" style={{ marginBottom: 20 }}>
+                <div className="admin-card-title">Automatische E-Mails</div>
+                <p className="admin-muted">
+                  Termin: {zoomMailings.eventLabel} (
+                  {new Date(zoomMailings.eventAt).toLocaleString("de-DE")}) ·
+                  Zoom-Link{" "}
+                  {zoomMailings.hasLink ? "gesetzt" : "fehlt noch (ZOOM_LINK)"}
+                </p>
+                <p>
+                  <strong>Link-Mail (1 Tag vorher, mit .ics):</strong>{" "}
+                  {zoomMailingStatus(zoomMailings.mailings, "link")}
+                </p>
+                <p>
+                  <strong>Erinnerung (2 Std. vorher):</strong>{" "}
+                  {zoomMailingStatus(zoomMailings.mailings, "reminder")}
+                </p>
+              </div>
+            )}
+
+            <div className="admin-card" style={{ marginBottom: 20 }}>
+              <div className="admin-card-title">Test-Mails</div>
+              <p className="admin-muted">
+                Schickt die jeweilige Zoom-Mail an eine einzelne Adresse (ohne
+                die echten Anmeldungen anzurühren).
+              </p>
+              <div className="field">
+                <label>Test-Adresse</label>
+                <input
+                  type="email"
+                  value={zoomTestEmail}
+                  onChange={(e) => setZoomTestEmail(e.target.value)}
+                  placeholder="test@beispiel.de"
+                />
+              </div>
+              <div className="admin-actions">
+                <button
+                  type="button"
+                  className="cta cta--outline"
+                  onClick={() => sendZoomTest("confirmation")}
+                  disabled={!zoomTestEmail || zoomTestStatus === "sending"}
+                >
+                  Bestätigung testen
+                </button>
+                <button
+                  type="button"
+                  className="cta cta--outline"
+                  onClick={() => sendZoomTest("link")}
+                  disabled={!zoomTestEmail || zoomTestStatus === "sending"}
+                >
+                  Link-Mail (.ics) testen
+                </button>
+                <button
+                  type="button"
+                  className="cta cta--outline"
+                  onClick={() => sendZoomTest("reminder")}
+                  disabled={!zoomTestEmail || zoomTestStatus === "sending"}
+                >
+                  Erinnerung testen
+                </button>
+              </div>
+              {zoomTestStatus === "ok" && (
+                <p className="admin-test-feedback admin-test-ok">
+                  Test-Mail gesendet
+                </p>
+              )}
+              {zoomTestStatus === "sending" && (
+                <p className="admin-test-feedback">Wird gesendet…</p>
+              )}
+              {zoomTestStatus &&
+                zoomTestStatus !== "ok" &&
+                zoomTestStatus !== "sending" && (
+                  <p className="admin-test-feedback admin-test-error">
+                    {zoomTestStatus}
+                  </p>
+                )}
+            </div>
+
+            <div className="admin-card-title" style={{ marginBottom: 8 }}>
+              Zoom-Anmeldungen · {zoomRegs.length} gesamt ·{" "}
+              {zoomRegs.filter((r) => r.delegierter).length} Delegierte
+            </div>
+            {zoomRegs.length === 0 ? (
+              <p>Noch keine Anmeldungen.</p>
+            ) : (
+              <div className="admin-table-wrap">
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Kreisverband</th>
+                      <th>Delegierte*r</th>
+                      <th>E-Mail</th>
+                      <th>Angemeldet</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {zoomRegs.map((r) => (
+                      <tr key={r.email}>
+                        <td>{r.name}</td>
+                        <td>{r.kreisverband || "—"}</td>
+                        <td>{r.delegierter ? "Ja" : "—"}</td>
+                        <td>{r.email}</td>
+                        <td>
+                          {new Date(r.created_at).toLocaleString("de-DE", {
+                            day: "2-digit",
+                            month: "2-digit",
+                            year: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </section>
       )}

@@ -137,7 +137,7 @@ button {
   height: 14px;
   background: var(--rot);
   border-radius: 2px;
-  transform: rotate(8deg);
+  transform: rotate(8deg) translateZ(0);
 }
 
 .topbar nav {
@@ -494,6 +494,99 @@ h1.headline .banner {
   color: var(--weiss);
   transform: translate(-2px, -2px);
   box-shadow: 4px 4px 0 var(--rot);
+}
+
+/* ---------- Störer (Zoom) ---------- */
+.counter-wrap {
+  position: relative;
+}
+
+.stoerer {
+  position: absolute;
+  top: -28px;
+  right: -24px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  width: 240px;
+  text-align: left;
+  background: var(--rot);
+  color: var(--weiss);
+  border: 2px solid var(--akzent);
+  padding: 18px 20px;
+  cursor: pointer;
+  transform: rotate(4deg) translateZ(0);
+  box-shadow: 8px 8px 0 var(--akzent);
+  font-family: "Work Sans", "Inter", sans-serif;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.stoerer:hover {
+  transform: rotate(2deg) scale(1.04) translateZ(0);
+  box-shadow: 11px 11px 0 var(--akzent);
+}
+
+.stoerer:focus-visible {
+  outline: 3px solid var(--akzent);
+  outline-offset: 3px;
+}
+
+.stoerer-head {
+  font-weight: 900;
+  font-size: 23px;
+  line-height: 1.02;
+  text-transform: uppercase;
+}
+
+.stoerer-body {
+  font-family: "Inter", sans-serif;
+  font-size: 13px;
+  line-height: 1.42;
+}
+
+.stoerer-date {
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+}
+
+.stoerer-cta {
+  font-weight: 700;
+  font-size: 14px;
+  text-transform: uppercase;
+}
+
+@media (max-width: 900px) {
+  .stoerer {
+    position: static;
+    width: 100%;
+    max-width: 360px;
+    margin: 32px auto 0;
+    transform: rotate(2deg) translateZ(0);
+  }
+}
+
+/* ---------- Zoom-Sektion ---------- */
+.zoom-when {
+  font-family: "Work Sans";
+  color: var(--rot-text);
+  margin-bottom: 8px;
+}
+
+.zoom-count {
+  font-family: "Work Sans";
+  margin-top: 4px;
+}
+
+.zoom-count b {
+  color: var(--rot-text);
+}
+
+.zoom-done {
+  text-align: center;
 }
 
 /* ---------- Brief ---------- */
@@ -2048,6 +2141,40 @@ footer {
   margin-bottom: 16px;
 }
 
+.admin-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--akzent);
+  background: var(--weiss);
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.admin-table th,
+.admin-table td {
+  text-align: left;
+  padding: 10px 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--akzent) 20%, var(--weiss));
+  white-space: nowrap;
+}
+
+.admin-table th {
+  font-family: "Work Sans";
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: var(--ls-wide);
+  text-transform: uppercase;
+  background: var(--fond);
+  color: var(--akzent);
+}
+
+.admin-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
 .admin-card label {
   display: block;
   font-family: "Work Sans";
@@ -2098,6 +2225,22 @@ footer {
 .admin-login .cta:hover,
 .campaign-form .cta:hover {
   background: var(--rot);
+}
+
+.admin-card .cta,
+.admin-login .cta,
+.campaign-form .cta {
+  transition:
+    background 0.3s ease,
+    border-color 0.3s ease;
+}
+
+.admin-card .cta.cta--saved,
+.admin-login .cta.cta--saved,
+.campaign-form .cta.cta--saved {
+  background: #1a7f3c;
+  border-color: #1a7f3c;
+  cursor: default;
 }
 
 .admin-list {

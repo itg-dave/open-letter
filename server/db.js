@@ -160,6 +160,149 @@ export async function insertSigner({
   return { ok: true, alreadyVerified: result[0].verified };
 }
 
+export async function getSignerForZoomInvite(token) {
+  const [signer] = await sql`
+    SELECT id, name, email, kreisverband
+    FROM signers
+    WHERE unsubscribe_token = ${token}
+      AND unsubscribe_token_created_at > NOW() - INTERVAL '90 days'
+      AND verified = TRUE
+  `;
+  return signer || null;
+}
+
+export async function insertZoomRegistration({ name, email, kv, delegierter }) {
+  const result = await sql`
+    INSERT INTO zoom_registrations (name, email, kreisverband, delegierter)
+    VALUES (${name}, ${email}, ${kv || ""}, ${Boolean(delegierter)})
+    ON CONFLICT (email) DO UPDATE
+      SET name = EXCLUDED.name,
+          kreisverband = EXCLUDED.kreisverband,
+          delegierter = EXCLUDED.delegierter
+    RETURNING id
+  `;
+  return { ok: true, id: result[0].id };
+}
+
+export async function getZoomRegistrationCount() {
+  const [row] = await sql`
+    SELECT COUNT(*)::int AS count FROM zoom_registrations
+  `;
+  return row;
+}
+
+export async function listZoomRegistrations() {
+  return await sql`
+    SELECT name, email, kreisverband, delegierter, created_at
+    FROM zoom_registrations
+    ORDER BY created_at DESC
+  `;
+}
+
+export async function getZoomCounts() {
+  const [row] = await sql`
+    SELECT
+      COUNT(*)::int AS "zoomCount",
+      COUNT(*) FILTER (WHERE delegierter)::int AS "zoomDelegateCount"
+    FROM zoom_registrations
+  `;
+  return row;
+}
+
+export async function getZoomRecipients({ delegatesOnly = false } = {}) {
+  if (delegatesOnly) {
+    return await sql`
+      SELECT id, name, email, unsubscribe_token
+      FROM zoom_registrations
+      WHERE delegierter = TRUE
+      ORDER BY created_at ASC
+    `;
+  }
+  return await sql`
+    SELECT id, name, email, unsubscribe_token
+    FROM zoom_registrations
+    ORDER BY created_at ASC
+  `;
+}
+
+export async function refreshZoomUnsubscribeToken(id) {
+  const token = crypto.randomUUID();
+  const [row] = await sql`
+    UPDATE zoom_registrations
+    SET unsubscribe_token = ${token}
+    WHERE id = ${id}
+    RETURNING unsubscribe_token
+  `;
+  return row?.unsubscribe_token || token;
+}
+
+export async function deleteZoomRegistrationByUnsubscribeToken(token) {
+  const result = await sql`
+    DELETE FROM zoom_registrations
+    WHERE unsubscribe_token = ${token}
+    RETURNING id
+  `;
+  return result.length > 0;
+}
+
+// Race-safe claim: returns the row only if newly inserted or previously failed
+// (allows retry on failure, prevents double-send while 'sending' or after 'sent').
+export async function claimZoomMailing(kind) {
+  const result = await sql`
+    INSERT INTO zoom_event_mailings (kind, status, updated_at)
+    VALUES (${kind}, 'sending', NOW())
+    ON CONFLICT (kind) DO UPDATE
+      SET status = 'sending', updated_at = NOW()
+      WHERE zoom_event_mailings.status = 'failed'
+    RETURNING kind
+  `;
+  return result.length > 0;
+}
+
+export async function markZoomMailing(kind, status, count = null) {
+  await sql`
+    UPDATE zoom_event_mailings
+    SET status = ${status},
+        recipient_count = ${count},
+        sent_at = ${status === "sent" ? sql`NOW()` : sql`sent_at`},
+        updated_at = NOW()
+    WHERE kind = ${kind}
+  `;
+}
+
+export async function listZoomMailings() {
+  return await sql`
+    SELECT kind, status, recipient_count, sent_at, updated_at
+    FROM zoom_event_mailings
+    ORDER BY kind ASC
+  `;
+}
+
+export async function resetZoomMailings() {
+  await sql`DELETE FROM zoom_event_mailings`;
+}
+
+export async function getZoomSettings() {
+  const rows = await sql`
+    SELECT key, value FROM app_settings WHERE key LIKE 'zoom_%'
+  `;
+  const out = {};
+  for (const row of rows) out[row.key] = row.value;
+  return out;
+}
+
+export async function setZoomSettings(partial) {
+  const entries = Object.entries(partial).filter(([, v]) => v != null);
+  for (const [key, value] of entries) {
+    await sql`
+      INSERT INTO app_settings (key, value, updated_at)
+      VALUES (${key}, ${String(value)}, NOW())
+      ON CONFLICT (key) DO UPDATE
+        SET value = EXCLUDED.value, updated_at = NOW()
+    `;
+  }
+}
+
 export async function getVerifiedSignerName(email) {
   const result = await sql`
     SELECT name FROM signers WHERE email = ${email} AND verified = TRUE
@@ -285,20 +428,25 @@ export async function deleteEmailTemplate(id) {
 export async function listCampaigns() {
   return await sql`
     SELECT c.id, c.template_id, t.name AS template_name, c.subject, c.scheduled_at,
-           c.sent_at, c.status, c.recipient_count, c.created_at
+           c.sent_at, c.status, c.recipient_count, c.sent_offset, c.audience, c.created_at
     FROM campaigns c
     LEFT JOIN email_templates t ON t.id = c.template_id
     ORDER BY c.scheduled_at DESC, c.created_at DESC
   `;
 }
 
-export async function createCampaign({ templateId, subject, scheduledAt }) {
+export async function createCampaign({
+  templateId,
+  subject,
+  scheduledAt,
+  audience = "newsletter",
+}) {
   const [campaign] = await sql`
-    INSERT INTO campaigns (template_id, subject, scheduled_at)
-    SELECT id, ${subject}, ${scheduledAt}
+    INSERT INTO campaigns (template_id, subject, scheduled_at, audience)
+    SELECT id, ${subject}, ${scheduledAt}, ${audience}
     FROM email_templates
     WHERE id = ${templateId}
-    RETURNING id, template_id, subject, scheduled_at, sent_at, status, recipient_count, created_at
+    RETURNING id, template_id, subject, scheduled_at, sent_at, status, recipient_count, audience, created_at
   `;
   return campaign || null;
 }
@@ -321,11 +469,11 @@ export async function claimDueCampaigns() {
       SELECT id
       FROM campaigns
       WHERE scheduled_at <= NOW()
-        AND status = 'scheduled'
+        AND status IN ('scheduled', 'failed')
       ORDER BY scheduled_at ASC
       FOR UPDATE SKIP LOCKED
     )
-    RETURNING id, template_id, subject, scheduled_at
+    RETURNING id, template_id, subject, scheduled_at, audience, sent_offset
   `;
 }
 
@@ -340,7 +488,17 @@ export async function markCampaignSent(id, recipientCount) {
 export async function markCampaignFailed(id, recipientCount = null) {
   await sql`
     UPDATE campaigns
-    SET status = 'failed', recipient_count = ${recipientCount}
+    SET status = 'failed',
+        recipient_count = COALESCE(${recipientCount}, recipient_count)
+    WHERE id = ${id}
+  `;
+}
+
+export async function incrementCampaignOffset(id, count) {
+  await sql`
+    UPDATE campaigns
+    SET sent_offset = sent_offset + ${count},
+        recipient_count = sent_offset + ${count}
     WHERE id = ${id}
   `;
 }
@@ -419,6 +577,73 @@ export async function deleteSignerByUnsubscribeToken(token) {
     RETURNING id
   `;
   return Boolean(signer);
+}
+
+// Resolve email from either a signer or zoom unsubscribe token.
+// `source` hints which table to try first ("zoom" or "newsletter"/default).
+export async function resolveEmailFromToken(token, source) {
+  if (source === "zoom") {
+    const [zoom] = await sql`
+      SELECT email FROM zoom_registrations WHERE unsubscribe_token = ${token}
+    `;
+    if (zoom) return zoom.email;
+  }
+  // Try signer
+  const [signer] = await sql`
+    SELECT email FROM signers
+    WHERE unsubscribe_token = ${token}
+      AND unsubscribe_token_created_at > NOW() - INTERVAL '90 days'
+  `;
+  if (signer) return signer.email;
+  // Fallback: try the other table
+  if (source !== "zoom") {
+    const [zoom] = await sql`
+      SELECT email FROM zoom_registrations WHERE unsubscribe_token = ${token}
+    `;
+    if (zoom) return zoom.email;
+  }
+  return null;
+}
+
+// Cross-check both tables by email to build unified state.
+export async function getUnifiedUnsubscribeState(token, source) {
+  const email = await resolveEmailFromToken(token, source);
+  if (!email) return null;
+
+  const [signer] = await sql`
+    SELECT newsletter, verified FROM signers WHERE email = ${email}
+  `;
+  const [zoom] = await sql`
+    SELECT id FROM zoom_registrations WHERE email = ${email}
+  `;
+
+  const masked = email.replace(
+    /^(.)(.*)(@.*)$/,
+    (_, a, b, c) => a + b.replace(/./g, "*") + c,
+  );
+
+  return {
+    emailMasked: masked,
+    source: source === "zoom" ? "zoom" : "newsletter",
+    newsletter: signer?.newsletter ?? false,
+    hasZoom: Boolean(zoom),
+    canDeleteSigner: signer?.verified ?? false,
+    hasSigner: Boolean(signer),
+  };
+}
+
+export async function optOutNewsletterByEmail(email) {
+  const [row] = await sql`
+    UPDATE signers SET newsletter = FALSE WHERE email = ${email} RETURNING id
+  `;
+  return Boolean(row);
+}
+
+export async function deleteZoomByEmail(email) {
+  const [row] = await sql`
+    DELETE FROM zoom_registrations WHERE email = ${email} RETURNING id
+  `;
+  return Boolean(row);
 }
 
 export function normalizeOccupation(occ) {

@@ -39,6 +39,64 @@ const templates = [
     `,
   },
   {
+    slug: "zoom_confirmation",
+    name: "Zoom-Anmeldung Bestatigung",
+    subject: "Du bist dabei — Zoom am {{eventLabel}} — Gehaltsdeckel jetzt",
+    htmlBody: `
+      <p>Hallo {{firstName}},</p>
+      <p>danke für deine Anmeldung zum Zoom-Treffen der Unterzeichner*innen am <strong>{{eventLabel}}</strong>.</p>
+      <p>Wir sprechen gemeinsam über die öffentliche Übergabe und eine Choreografie auf dem Parteitag und planen die nächsten Schritte.</p>
+      {{linkInfo}}
+      <p>Bis dann und mit solidarischen Grüßen<br>Initiative Gehaltsdeckel</p>
+    `,
+  },
+  {
+    slug: "zoom_link",
+    name: "Zoom-Link (1 Tag vorher)",
+    subject: "Dein Zoom-Link für das Treffen am {{eventLabel}}",
+    htmlBody: `
+      <p>Hallo {{firstName}},</p>
+      <p>morgen ist es so weit — unser Zoom-Treffen am <strong>{{eventLabel}}</strong>. Hier ist dein Einwahllink:</p>
+      {{linkInfo}}
+      <p>Den passenden Kalendereintrag findest du im Anhang (.ics) oder über den Button oben.</p>
+      <p>Bis morgen und mit solidarischen Grüßen<br>Initiative Gehaltsdeckel</p>
+    `,
+  },
+  {
+    slug: "zoom_reminder",
+    name: "Zoom-Erinnerung (2 Std. vorher)",
+    subject: "Gleich geht's los — Zoom-Treffen in 2 Stunden",
+    htmlBody: `
+      <p>Hallo {{firstName}},</p>
+      <p>kleine Erinnerung: In rund 2 Stunden startet unser Zoom-Treffen am <strong>{{eventLabel}}</strong>.</p>
+      {{linkInfo}}
+      <p>Wir freuen uns auf dich!<br>Initiative Gehaltsdeckel</p>
+    `,
+  },
+  {
+    slug: "zoom_newsletter_invite",
+    name: "Newsletter → Zoom-Einladung",
+    subject:
+      "Bist du dabei? Zoom-Treffen am {{eventLabel}} — Gehaltsdeckel jetzt",
+    htmlBody: `
+      <div class="email-shell">
+        <p class="anrede">Hallo {{firstName}},</p>
+        <p>wir planen unser erstes gemeinsames Zoom-Treffen am <strong>{{eventLabel}}</strong> und würden uns freuen, wenn du dabei bist.</p>
+        <p>In dem Treffen wollen wir gemeinsam die nächsten Schritte besprechen — die öffentliche Übergabe des Briefes, eine Choreografie auf dem Parteitag und mehr.</p>
+        <p><strong>Melde dich jetzt mit einem Klick an:</strong></p>
+        <p>
+          <a href="{{zoomJaUrl}}" style="display:inline-block;background:#ff0000;color:#ffffff;font-family:'Work Sans',Arial,sans-serif;font-weight:700;font-size:15px;text-decoration:none;padding:13px 22px;border:2px solid #6f003c;">Ja, ich bin dabei</a>
+        </p>
+        <p>
+          <a href="{{zoomJaDelegiertUrl}}" style="display:inline-block;background:#6f003c;color:#ffffff;font-family:'Work Sans',Arial,sans-serif;font-weight:700;font-size:15px;text-decoration:none;padding:13px 22px;border:2px solid #6f003c;">Ja, ich bin dabei und bin Delegierte*r</a>
+        </p>
+        <p>Deine Angaben (Name, Kreisverband) werden automatisch aus deiner Unterschrift übernommen — du musst nichts weiter ausfüllen.</p>
+        <p class="gruss">Mit solidarischen Grüßen<br>Initiative Gehaltsdeckel</p>
+        <footer>Du erhältst diese E-Mail, weil du Updates abonniert hast. <a href="{{unsubscribeUrl}}">E-Mails abbestellen</a>.</footer>
+      </div>
+    `,
+  },
+  {
     slug: "open-letter-update",
     name: "Open Letter Update",
     subject: "Update: Gehaltsdeckel jetzt — {{signerCount}} Mitzeichner*innen",
