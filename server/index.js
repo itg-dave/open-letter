@@ -389,14 +389,13 @@ async function sendCampaign(campaign) {
 
   const audience = campaign.audience || "newsletter";
   const isZoom = audience === "zoom" || audience === "zoom_delegates";
-  const isZoomInvite = audience === "newsletter_zoom_invite";
 
   const recipients = isZoom
     ? await getZoomRecipients({ delegatesOnly: audience === "zoom_delegates" })
     : await getNewsletterRecipients();
   const stats = await getNewsletterStats();
   const signerCount = stats.signerCount?.toLocaleString("de-DE") || "0";
-  const zoomCfg = isZoom || isZoomInvite ? await getZoomConfig() : null;
+  const zoomCfg = isZoom ? await getZoomConfig() : null;
   const zoomLinkInfo = zoomCfg ? buildZoomLinkInfo(zoomCfg.link) : "";
 
   // Resume from where a previous run left off (0 for fresh start).
@@ -429,19 +428,6 @@ async function sendCampaign(campaign) {
             eventLabel: zoomCfg.label,
             zoomLink: zoomCfg.link,
             linkInfo: zoomLinkInfo,
-            unsubscribeUrl,
-          };
-        } else if (isZoomInvite) {
-          const token = await refreshUnsubscribeToken(recipient.id);
-          const unsubscribeUrl = `${BASE_URL}/abmelden/${token}`;
-          optOutUrl = `${BASE_URL}/api/unsubscribe/${token}/opt-out`;
-          variables = {
-            name: recipient.name,
-            firstName,
-            signerCount,
-            eventLabel: zoomCfg.label,
-            zoomJaUrl: `${BASE_URL}/api/zoom-anmelden/${token}?delegiert=0`,
-            zoomJaDelegiertUrl: `${BASE_URL}/api/zoom-anmelden/${token}?delegiert=1`,
             unsubscribeUrl,
           };
         } else {
@@ -1478,12 +1464,9 @@ const server = Bun.serve({
           const templateId = parseInt(body.template_id, 10);
           const subject = sanitize(body.subject, 240);
           const scheduledAt = new Date(body.scheduled_at);
-          const audience = [
-            "newsletter",
-            "zoom",
-            "zoom_delegates",
-            "newsletter_zoom_invite",
-          ].includes(body.audience)
+          const audience = ["newsletter", "zoom", "zoom_delegates"].includes(
+            body.audience,
+          )
             ? body.audience
             : "newsletter";
           if (!templateId || !subject || Number.isNaN(scheduledAt.getTime())) {
@@ -1677,19 +1660,15 @@ const server = Bun.serve({
           if (!template) {
             return json({ error: "Vorlage nicht gefunden" }, 404);
           }
-          const audience = [
-            "newsletter",
-            "zoom",
-            "zoom_delegates",
-            "newsletter_zoom_invite",
-          ].includes(body.audience)
+          const audience = ["newsletter", "zoom", "zoom_delegates"].includes(
+            body.audience,
+          )
             ? body.audience
             : "newsletter";
           const isZoom = audience === "zoom" || audience === "zoom_delegates";
-          const isZoomInvite = audience === "newsletter_zoom_invite";
           const stats = await getNewsletterStats();
           const signerCount = stats.signerCount?.toLocaleString("de-DE") || "0";
-          const zoomCfg = isZoom || isZoomInvite ? await getZoomConfig() : null;
+          const zoomCfg = isZoom ? await getZoomConfig() : null;
           const vars = isZoom
             ? {
                 name: "Test-Empfänger",
@@ -1699,24 +1678,14 @@ const server = Bun.serve({
                 linkInfo: buildZoomLinkInfo(zoomCfg.link),
                 unsubscribeUrl: `${BASE_URL}/abmelden/test?from=zoom`,
               }
-            : isZoomInvite
-              ? {
-                  name: "Test-Empfänger",
-                  firstName: "Test-Empfänger",
-                  signerCount,
-                  eventLabel: zoomCfg.label,
-                  zoomJaUrl: `${BASE_URL}/api/zoom-anmelden/test?delegiert=0`,
-                  zoomJaDelegiertUrl: `${BASE_URL}/api/zoom-anmelden/test?delegiert=1`,
-                  unsubscribeUrl: `${BASE_URL}/abmelden/test`,
-                }
-              : {
-                  name: "Test-Empfänger",
-                  firstName: "Test-Empfänger",
-                  signerCount,
-                  unsubscribeUrl: `${BASE_URL}/abmelden/test`,
-                  confirmUrl: `${BASE_URL}/api/confirm/test`,
-                  deleteUrl: `${BASE_URL}/api/delete/test`,
-                };
+            : {
+                name: "Test-Empfänger",
+                firstName: "Test-Empfänger",
+                signerCount,
+                unsubscribeUrl: `${BASE_URL}/abmelden/test`,
+                confirmUrl: `${BASE_URL}/api/confirm/test`,
+                deleteUrl: `${BASE_URL}/api/delete/test`,
+              };
           const html = renderEmailHtml(template.html_body, vars);
           const subject = interpolateTemplate(
             String(body.subject || template.subject || ""),

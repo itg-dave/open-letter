@@ -18,7 +18,6 @@ import {
 const TOKEN_KEY = "gehaltsdeckel_admin_token";
 const AUDIENCE_LABELS = {
   newsletter: "Newsletter-Unterschreiber",
-  newsletter_zoom_invite: "Newsletter → Zoom-Einladung",
   zoom: "Zoom-Anmelder",
   zoom_delegates: "Delegierte (Zoom)",
 };
@@ -891,9 +890,6 @@ export default function AdminApp() {
                   onChange={(e) => setAudience(e.target.value)}
                 >
                   <option value="newsletter">Newsletter-Unterschreiber</option>
-                  <option value="newsletter_zoom_invite">
-                    Newsletter → Zoom-Einladung
-                  </option>
                   <option value="zoom">Zoom-Anmelder (alle)</option>
                   <option value="zoom_delegates">Nur Delegierte (Zoom)</option>
                 </select>
