@@ -42,6 +42,8 @@ import {
   markCampaignFailed,
   incrementCampaignOffset,
   getNewsletterRecipients,
+  getNewsletterRecipientByEmail,
+  getZoomRecipientByEmail,
   refreshUnsubscribeToken,
   refreshUnsubscribeTokenByEmail,
   getUnsubscribeState,
@@ -1669,31 +1671,65 @@ const server = Bun.serve({
           const stats = await getNewsletterStats();
           const signerCount = stats.signerCount?.toLocaleString("de-DE") || "0";
           const zoomCfg = isZoom ? await getZoomConfig() : null;
-          const vars = isZoom
-            ? {
-                name: "Test-Empfänger",
-                firstName: "Test-Empfänger",
+          const realRecipient = isZoom
+            ? await getZoomRecipientByEmail(to)
+            : await getNewsletterRecipientByEmail(to);
+          let vars;
+          let optOutUrl;
+          if (realRecipient) {
+            const firstName = realRecipient.name.split(/\s/)[0];
+            if (isZoom) {
+              const token = await refreshZoomUnsubscribeToken(realRecipient.id);
+              const unsubscribeUrl = `${BASE_URL}/abmelden/${token}?from=zoom`;
+              optOutUrl = `${BASE_URL}/api/zoom-abmelden/${token}/opt-out`;
+              vars = {
+                name: realRecipient.name,
+                firstName,
                 eventLabel: zoomCfg.label,
                 zoomLink: zoomCfg.link,
                 linkInfo: buildZoomLinkInfo(zoomCfg.link),
-                unsubscribeUrl: `${BASE_URL}/abmelden/test?from=zoom`,
-              }
-            : {
-                name: "Test-Empfänger",
-                firstName: "Test-Empfänger",
+                unsubscribeUrl,
+              };
+            } else {
+              const token = await refreshUnsubscribeToken(realRecipient.id);
+              const unsubscribeUrl = `${BASE_URL}/abmelden/${token}`;
+              optOutUrl = `${BASE_URL}/api/unsubscribe/${token}/opt-out`;
+              vars = {
+                name: realRecipient.name,
+                firstName,
                 signerCount,
-                unsubscribeUrl: `${BASE_URL}/abmelden/test`,
+                unsubscribeUrl,
                 confirmUrl: `${BASE_URL}/api/confirm/test`,
                 deleteUrl: `${BASE_URL}/api/delete/test`,
               };
+            }
+          } else {
+            optOutUrl = isZoom
+              ? `${BASE_URL}/api/zoom-abmelden/test/opt-out`
+              : `${BASE_URL}/api/unsubscribe/test/opt-out`;
+            vars = isZoom
+              ? {
+                  name: "Test-Empfänger",
+                  firstName: "Test-Empfänger",
+                  eventLabel: zoomCfg.label,
+                  zoomLink: zoomCfg.link,
+                  linkInfo: buildZoomLinkInfo(zoomCfg.link),
+                  unsubscribeUrl: `${BASE_URL}/abmelden/test?from=zoom`,
+                }
+              : {
+                  name: "Test-Empfänger",
+                  firstName: "Test-Empfänger",
+                  signerCount,
+                  unsubscribeUrl: `${BASE_URL}/abmelden/test`,
+                  confirmUrl: `${BASE_URL}/api/confirm/test`,
+                  deleteUrl: `${BASE_URL}/api/delete/test`,
+                };
+          }
           const html = renderEmailHtml(template.html_body, vars);
           const subject = interpolateTemplate(
             String(body.subject || template.subject || ""),
             vars,
           );
-          const optOutUrl = isZoom
-            ? `${BASE_URL}/api/zoom-abmelden/test/opt-out`
-            : `${BASE_URL}/api/unsubscribe/test/opt-out`;
           const testUnsubHeaders = buildUnsubscribeHeaders(optOutUrl);
           await sendRenderedEmail({
             to,

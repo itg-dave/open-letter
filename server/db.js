@@ -503,6 +503,26 @@ export async function incrementCampaignOffset(id, count) {
   `;
 }
 
+export async function getNewsletterRecipientByEmail(email) {
+  const [row] = await sql`
+    SELECT id, name, email
+    FROM signers
+    WHERE email = ${email}
+      AND verified = TRUE
+      AND newsletter = TRUE
+  `;
+  return row || null;
+}
+
+export async function getZoomRecipientByEmail(email) {
+  const [row] = await sql`
+    SELECT id, name, email
+    FROM zoom_registrations
+    WHERE email = ${email}
+  `;
+  return row || null;
+}
+
 export async function getNewsletterRecipients() {
   return await sql`
     SELECT id, name, email, unsubscribe_token
