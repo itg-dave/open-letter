@@ -304,6 +304,10 @@ export default function App() {
     }
   }, []);
 
+  const zoomOpen =
+    !zoomEventAt ||
+    Date.now() < new Date(zoomEventAt).getTime() + 2 * 60 * 60 * 1000;
+
   useEffect(() => {
     function scrollToHash() {
       const hash = window.location.hash;
@@ -481,11 +485,6 @@ export default function App() {
   const ZIEL =
     MILESTONES.find((m) => m > total) ?? MILESTONES[MILESTONES.length - 1];
   const pct = Math.min(100, Math.round((total / ZIEL) * 100));
-
-  // Hide the Störer and zoom signup form 2 hours after the event
-  const zoomOpen =
-    !zoomEventAt ||
-    Date.now() < new Date(zoomEventAt).getTime() + 2 * 60 * 60 * 1000;
 
   return (
     <>
