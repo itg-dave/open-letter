@@ -441,6 +441,8 @@ async function sendCampaign(campaign) {
             firstName,
             signerCount,
             unsubscribeUrl,
+            zoomJaUrl: `${BASE_URL}/api/zoom-anmelden/${token}?delegiert=0`,
+            zoomJaDelegiertUrl: `${BASE_URL}/api/zoom-anmelden/${token}?delegiert=1`,
           };
         }
         payloads.push({
@@ -1629,8 +1631,6 @@ const server = Bun.serve({
             html: renderEmailHtml(sanitizeHtml(body.html_body), {
               name: "Ada Beispiel",
               firstName: "Ada",
-              confirmUrl: `${BASE_URL}/api/confirm/beispiel`,
-              deleteUrl: `${BASE_URL}/api/delete/beispiel`,
               signerCount: "1.000",
               unsubscribeUrl: `${BASE_URL}/abmelden/beispiel`,
               eventLabel: cfg.label,
@@ -1699,8 +1699,8 @@ const server = Bun.serve({
                 firstName,
                 signerCount,
                 unsubscribeUrl,
-                confirmUrl: `${BASE_URL}/api/confirm/test`,
-                deleteUrl: `${BASE_URL}/api/delete/test`,
+                zoomJaUrl: `${BASE_URL}/api/zoom-anmelden/${token}?delegiert=0`,
+                zoomJaDelegiertUrl: `${BASE_URL}/api/zoom-anmelden/${token}?delegiert=1`,
               };
             }
           } else {
@@ -1721,8 +1721,8 @@ const server = Bun.serve({
                   firstName: "Test-Empfänger",
                   signerCount,
                   unsubscribeUrl: `${BASE_URL}/abmelden/test`,
-                  confirmUrl: `${BASE_URL}/api/confirm/test`,
-                  deleteUrl: `${BASE_URL}/api/delete/test`,
+                  zoomJaUrl: `${BASE_URL}/api/zoom-anmelden/test?delegiert=0`,
+                  zoomJaDelegiertUrl: `${BASE_URL}/api/zoom-anmelden/test?delegiert=1`,
                 };
           }
           const html = renderEmailHtml(template.html_body, vars);
