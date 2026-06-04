@@ -20,6 +20,7 @@ const AUDIENCE_LABELS = {
   newsletter: "Newsletter-Unterschreiber",
   zoom: "Zoom-Anmelder",
   zoom_delegates: "Delegierte (Zoom)",
+  selection: "Auswahl",
 };
 
 function zoomMailingStatus(mailings, kind) {
@@ -467,6 +468,74 @@ export default function AdminApp() {
   const [zoomReminderOffset, setZoomReminderOffset] = useState(2);
   const [zoomSettingsStatus, setZoomSettingsStatus] = useState(null);
 
+  // Unterzeichner (newsletter signer list) tab
+  const SIGNER_PAGE_SIZE = 25;
+  const [signerRows, setSignerRows] = useState([]);
+  const [signerTotal, setSignerTotal] = useState(0);
+  const [signerLoading, setSignerLoading] = useState(false);
+  const [signerSearch, setSignerSearch] = useState("");
+  const [signerStateFilter, setSignerStateFilter] = useState("");
+  const [signerKvFilter, setSignerKvFilter] = useState("");
+  const [signerDatePreset, setSignerDatePreset] = useState("alle");
+  const [signerDateFrom, setSignerDateFrom] = useState("");
+  const [signerDateTo, setSignerDateTo] = useState("");
+  const [signerPage, setSignerPage] = useState(0);
+  const [signerFilterOpts, setSignerFilterOpts] = useState({
+    states: [],
+    kvs: [],
+  });
+  const [selectedSignerIds, setSelectedSignerIds] = useState(() => new Set());
+  const [selTemplate, setSelTemplate] = useState("");
+  const [selSubject, setSelSubject] = useState("");
+  const [selDate, setSelDate] = useState(new Date());
+  const [selDateInput, setSelDateInput] = useState(() =>
+    format(new Date(), "dd.MM.yyyy"),
+  );
+  const [selTime, setSelTime] = useState("10:00");
+  const [selSendStatus, setSelSendStatus] = useState(null);
+  const [selTestEmail, setSelTestEmail] = useState("");
+  const [selTestStatus, setSelTestStatus] = useState(null);
+
+  // Resolve the active date range (ISO strings) from preset / custom inputs.
+  function signerDateRange() {
+    const now = Date.now();
+    if (signerDatePreset === "24h")
+      return { from: new Date(now - 24 * 3600e3).toISOString(), to: null };
+    if (signerDatePreset === "7d")
+      return { from: new Date(now - 7 * 24 * 3600e3).toISOString(), to: null };
+    if (signerDatePreset === "custom") {
+      const from = signerDateFrom
+        ? new Date(signerDateFrom + "T00:00:00").toISOString()
+        : null;
+      const to = signerDateTo
+        ? new Date(signerDateTo + "T23:59:59").toISOString()
+        : null;
+      return { from, to };
+    }
+    return { from: null, to: null };
+  }
+
+  function signerQuery(extra = {}) {
+    const { from, to } = signerDateRange();
+    const params = new URLSearchParams();
+    if (signerSearch.trim()) params.set("search", signerSearch.trim());
+    if (signerStateFilter) params.set("state", signerStateFilter);
+    if (signerKvFilter) params.set("kv", signerKvFilter);
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    for (const [k, v] of Object.entries(extra)) params.set(k, v);
+    return params.toString();
+  }
+
+  function handleSelDateInput(e) {
+    const raw = e.target.value;
+    setSelDateInput(raw);
+    if (raw.length === 10) {
+      const parsed = parse(raw, "dd.MM.yyyy", new Date());
+      if (isValid(parsed)) setSelDate(parsed);
+    }
+  }
+
   function handleDateInput(e) {
     const raw = e.target.value;
     setDateInput(raw);
@@ -547,6 +616,68 @@ export default function AdminApp() {
       if (res.ok) setSelectedTemplate(await res.json());
     });
   }, [api, selectedId, token]);
+
+  const loadSigners = useCallback(async () => {
+    if (!token) return;
+    setSignerLoading(true);
+    const qs = signerQuery({
+      limit: String(SIGNER_PAGE_SIZE),
+      offset: String(signerPage * SIGNER_PAGE_SIZE),
+    });
+    const res = await api(`/api/admin/newsletter-signers?${qs}`);
+    if (res.ok) {
+      const data = await res.json();
+      setSignerRows(data.signers || []);
+      setSignerTotal(data.total || 0);
+    }
+    setSignerLoading(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    api,
+    token,
+    signerPage,
+    signerSearch,
+    signerStateFilter,
+    signerKvFilter,
+    signerDatePreset,
+    signerDateFrom,
+    signerDateTo,
+  ]);
+
+  // Debounced fetch when the signers tab is active or its filters change.
+  useEffect(() => {
+    if (tab !== "signers" || !token) return;
+    const t = setTimeout(loadSigners, 250);
+    return () => clearTimeout(t);
+  }, [tab, token, loadSigners]);
+
+  // Load filter dropdown options once when entering the signers tab.
+  useEffect(() => {
+    if (tab !== "signers" || !token) return;
+    api("/api/admin/newsletter-signer-filters").then(async (res) => {
+      if (res.ok) setSignerFilterOpts(await res.json());
+    });
+  }, [api, tab, token]);
+
+  // Seed the selection send form's template/subject from loaded templates.
+  useEffect(() => {
+    if (!selTemplate && templates[0]) {
+      setSelTemplate(String(templates[0].id));
+      setSelSubject(templates[0].subject);
+    }
+  }, [templates, selTemplate]);
+
+  // Reset to first page whenever filters change.
+  useEffect(() => {
+    setSignerPage(0);
+  }, [
+    signerSearch,
+    signerStateFilter,
+    signerKvFilter,
+    signerDatePreset,
+    signerDateFrom,
+    signerDateTo,
+  ]);
 
   useEffect(() => {
     if (tab !== "zoom" || !token) return;
@@ -703,6 +834,101 @@ export default function AdminApp() {
     if (res.ok) reloadCampaigns();
   }
 
+  function toggleSigner(id) {
+    setSelectedSignerIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleCurrentPage(checked) {
+    setSelectedSignerIds((prev) => {
+      const next = new Set(prev);
+      for (const row of signerRows) {
+        if (checked) next.add(row.id);
+        else next.delete(row.id);
+      }
+      return next;
+    });
+  }
+
+  async function selectAllMatching() {
+    const res = await api(`/api/admin/newsletter-signer-ids?${signerQuery()}`);
+    if (res.ok) {
+      const data = await res.json();
+      setSelectedSignerIds(new Set(data.ids || []));
+    }
+  }
+
+  function clearSelection() {
+    setSelectedSignerIds(new Set());
+  }
+
+  async function submitSelectionCampaign(scheduledAt) {
+    if (!selTemplate || selectedSignerIds.size === 0) return;
+    const res = await api("/api/admin/campaigns", {
+      method: "POST",
+      body: JSON.stringify({
+        template_id: selTemplate,
+        subject: selSubject,
+        scheduled_at: scheduledAt.toISOString(),
+        audience: "selection",
+        recipient_ids: [...selectedSignerIds],
+      }),
+    });
+    if (res.ok) {
+      reloadCampaigns();
+      setSelSendStatus("ok");
+      setTimeout(() => setSelSendStatus(null), 4000);
+      return true;
+    }
+    const data = await res.json().catch(() => ({}));
+    setSelSendStatus(data.error || "Fehler beim Senden");
+    return false;
+  }
+
+  async function sendSelectionNow() {
+    if (
+      !window.confirm(
+        `Jetzt an ${selectedSignerIds.size.toLocaleString("de-DE")} ausgewählte Empfänger*innen senden?`,
+      )
+    )
+      return;
+    await submitSelectionCampaign(new Date());
+  }
+
+  function scheduleSelection(e) {
+    e.preventDefault();
+    if (!selDate) return;
+    const [hour, minute] = selTime.split(":").map(Number);
+    const when = new Date(selDate);
+    when.setHours(hour || 0, minute || 0, 0, 0);
+    submitSelectionCampaign(when);
+  }
+
+  async function sendSelectionTest() {
+    if (!selTemplate || !selTestEmail) return;
+    setSelTestStatus("sending");
+    const res = await api("/api/admin/test-send", {
+      method: "POST",
+      body: JSON.stringify({
+        template_id: selTemplate,
+        subject: selSubject,
+        to: selTestEmail,
+        audience: "newsletter",
+      }),
+    });
+    if (res.ok) {
+      setSelTestStatus("ok");
+      setTimeout(() => setSelTestStatus(null), 4000);
+    } else {
+      const data = await res.json().catch(() => ({}));
+      setSelTestStatus(data.error || "Fehler beim Senden");
+    }
+  }
+
   async function saveZoomSettings(e) {
     e.preventDefault();
     if (!zoomEventAtInput) return;
@@ -807,6 +1033,13 @@ export default function AdminApp() {
             onClick={() => setTab("campaigns")}
           >
             Versand
+          </button>
+          <button
+            className={tab === "signers" ? "active" : ""}
+            aria-current={tab === "signers" ? "page" : undefined}
+            onClick={() => setTab("signers")}
+          >
+            Unterzeichner
           </button>
           <button
             className={tab === "zoom" ? "active" : ""}
@@ -1039,6 +1272,324 @@ export default function AdminApp() {
                   )}
                 </div>
               ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {tab === "signers" && (
+        <section className="section">
+          <div className="section-inner">
+            <div className="admin-card" style={{ marginBottom: 16 }}>
+              <div className="admin-card-title">Filter</div>
+              <div className="signer-filter-bar">
+                <div className="field">
+                  <label>Suche (Name, E-Mail, Kreisverband)</label>
+                  <input
+                    value={signerSearch}
+                    onChange={(e) => setSignerSearch(e.target.value)}
+                    placeholder="Suchen…"
+                  />
+                </div>
+                <div className="field">
+                  <label>Bundesland</label>
+                  <select
+                    value={signerStateFilter}
+                    onChange={(e) => setSignerStateFilter(e.target.value)}
+                  >
+                    <option value="">Alle</option>
+                    {signerFilterOpts.states.map((s) => (
+                      <option key={s.state} value={s.state}>
+                        {s.state} ({s.count})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label>Kreisverband</label>
+                  <select
+                    value={signerKvFilter}
+                    onChange={(e) => setSignerKvFilter(e.target.value)}
+                  >
+                    <option value="">Alle</option>
+                    {signerFilterOpts.kvs.map((k) => (
+                      <option key={k.kreisverband} value={k.kreisverband}>
+                        {k.kreisverband} ({k.count})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label>Zeitraum</label>
+                  <select
+                    value={signerDatePreset}
+                    onChange={(e) => setSignerDatePreset(e.target.value)}
+                  >
+                    <option value="alle">Alle</option>
+                    <option value="24h">Letzte 24 Stunden</option>
+                    <option value="7d">Letzte 7 Tage</option>
+                    <option value="custom">Benutzerdefiniert</option>
+                  </select>
+                </div>
+                {signerDatePreset === "custom" && (
+                  <>
+                    <div className="field">
+                      <label>Von</label>
+                      <input
+                        type="date"
+                        value={signerDateFrom}
+                        onChange={(e) => setSignerDateFrom(e.target.value)}
+                      />
+                    </div>
+                    <div className="field">
+                      <label>Bis</label>
+                      <input
+                        type="date"
+                        value={signerDateTo}
+                        onChange={(e) => setSignerDateTo(e.target.value)}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="admin-signers-layout">
+              <div className="admin-card">
+                <div className="admin-card-title">
+                  {signerTotal.toLocaleString("de-DE")} gefiltert &middot;{" "}
+                  {selectedSignerIds.size.toLocaleString("de-DE")} ausgewählt
+                </div>
+                <div className="signer-selection-actions">
+                  <button
+                    type="button"
+                    onClick={selectAllMatching}
+                    disabled={signerTotal === 0}
+                  >
+                    Alle {signerTotal.toLocaleString("de-DE")} auswählen
+                  </button>
+                  <button
+                    type="button"
+                    onClick={clearSelection}
+                    disabled={selectedSignerIds.size === 0}
+                  >
+                    Auswahl aufheben
+                  </button>
+                </div>
+                <div className="admin-table-wrap">
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>
+                          <input
+                            type="checkbox"
+                            aria-label="Seite auswählen"
+                            checked={
+                              signerRows.length > 0 &&
+                              signerRows.every((r) =>
+                                selectedSignerIds.has(r.id),
+                              )
+                            }
+                            onChange={(e) => toggleCurrentPage(e.target.checked)}
+                          />
+                        </th>
+                        <th>Name</th>
+                        <th>E-Mail</th>
+                        <th>Kreisverband</th>
+                        <th>Bundesland</th>
+                        <th>Tätigkeit</th>
+                        <th>Unterschrieben</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {signerRows.map((r) => (
+                        <tr
+                          key={r.id}
+                          className="signer-row"
+                          onClick={() => toggleSigner(r.id)}
+                          aria-selected={selectedSignerIds.has(r.id)}
+                        >
+                          <td>
+                            <input
+                              type="checkbox"
+                              aria-label={`${r.name} auswählen`}
+                              checked={selectedSignerIds.has(r.id)}
+                              onChange={() => toggleSigner(r.id)}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          </td>
+                          <td>{r.name}</td>
+                          <td>{r.email}</td>
+                          <td>{r.kreisverband || "—"}</td>
+                          <td>{r.state || "—"}</td>
+                          <td>{r.occupation || "—"}</td>
+                          <td>
+                            {new Date(r.created_at).toLocaleDateString("de-DE")}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {signerLoading && <p className="admin-muted">Lädt…</p>}
+                {!signerLoading && signerRows.length === 0 && (
+                  <p className="admin-muted">Keine Unterzeichner gefunden.</p>
+                )}
+                <div className="signer-pagination">
+                  <button
+                    type="button"
+                    disabled={signerPage === 0}
+                    onClick={() => setSignerPage((p) => Math.max(0, p - 1))}
+                  >
+                    Zurück
+                  </button>
+                  <span className="admin-muted">
+                    Seite {signerPage + 1} /{" "}
+                    {Math.max(1, Math.ceil(signerTotal / SIGNER_PAGE_SIZE))}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={
+                      (signerPage + 1) * SIGNER_PAGE_SIZE >= signerTotal
+                    }
+                    onClick={() => setSignerPage((p) => p + 1)}
+                  >
+                    Weiter
+                  </button>
+                </div>
+              </div>
+
+              <form
+                className="admin-card campaign-form"
+                onSubmit={scheduleSelection}
+              >
+                <div className="admin-card-title">An Auswahl senden</div>
+                <p className="admin-muted">
+                  {selectedSignerIds.size.toLocaleString("de-DE")}{" "}
+                  Empfänger*innen ausgewählt
+                </p>
+                <div className="field">
+                  <label>Vorlage</label>
+                  <select
+                    value={selTemplate}
+                    onChange={(e) => {
+                      setSelTemplate(e.target.value);
+                      const t = templates.find(
+                        (x) => String(x.id) === e.target.value,
+                      );
+                      if (t) setSelSubject(t.subject);
+                    }}
+                  >
+                    {templates.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label>Betreff</label>
+                  <input
+                    value={selSubject}
+                    onChange={(e) => setSelSubject(e.target.value)}
+                  />
+                </div>
+                <div className="admin-picker-wrapper">
+                  <div className="admin-date-row">
+                    <div className="field">
+                      <label>Datum</label>
+                      <input
+                        type="text"
+                        value={selDateInput}
+                        onChange={handleSelDateInput}
+                        placeholder="TT.MM.JJJJ"
+                        maxLength={10}
+                      />
+                    </div>
+                    <div className="field">
+                      <label>Uhrzeit</label>
+                      <input
+                        type="time"
+                        value={selTime}
+                        onChange={(e) => setSelTime(e.target.value)}
+                        lang="de"
+                      />
+                    </div>
+                  </div>
+                  <DayPicker
+                    mode="single"
+                    selected={selDate}
+                    onSelect={(date) => {
+                      if (date) {
+                        setSelDate(date);
+                        setSelDateInput(format(date, "dd.MM.yyyy"));
+                      }
+                    }}
+                    locale={de}
+                  />
+                </div>
+                <div className="admin-actions">
+                  <button
+                    className="cta"
+                    type="submit"
+                    disabled={!selTemplate || selectedSignerIds.size === 0}
+                  >
+                    Planen
+                  </button>
+                  <button
+                    className="cta"
+                    type="button"
+                    onClick={sendSelectionNow}
+                    disabled={!selTemplate || selectedSignerIds.size === 0}
+                  >
+                    Jetzt senden
+                  </button>
+                </div>
+                {selSendStatus === "ok" && (
+                  <p className="admin-test-feedback admin-test-ok">
+                    Kampagne erstellt
+                  </p>
+                )}
+                {selSendStatus && selSendStatus !== "ok" && (
+                  <p className="admin-test-feedback admin-test-error">
+                    {selSendStatus}
+                  </p>
+                )}
+
+                <div className="admin-test-send">
+                  <div className="field">
+                    <label>Testversand an</label>
+                    <input
+                      type="email"
+                      value={selTestEmail}
+                      onChange={(e) => setSelTestEmail(e.target.value)}
+                      placeholder="test@beispiel.de"
+                    />
+                  </div>
+                  <button
+                    className="cta cta--outline"
+                    type="button"
+                    onClick={sendSelectionTest}
+                    disabled={!selTestEmail || selTestStatus === "sending"}
+                  >
+                    {selTestStatus === "sending"
+                      ? "Wird gesendet…"
+                      : "Test senden"}
+                  </button>
+                  {selTestStatus === "ok" && (
+                    <p className="admin-test-feedback admin-test-ok">
+                      E-Mail gesendet
+                    </p>
+                  )}
+                  {selTestStatus &&
+                    selTestStatus !== "ok" &&
+                    selTestStatus !== "sending" && (
+                      <p className="admin-test-feedback admin-test-error">
+                        {selTestStatus}
+                      </p>
+                    )}
+                </div>
+              </form>
             </div>
           </div>
         </section>

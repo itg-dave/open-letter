@@ -108,6 +108,119 @@ export async function getSigners({
   return { signers, total };
 }
 
+// Build the shared WHERE fragment for the admin newsletter-signer list.
+// Base: verified newsletter opt-ins (NOT filtered by show_publicly — admin sees all).
+function newsletterSignerWhere({
+  search = "",
+  state = "",
+  kv = "",
+  dateFrom = null,
+  dateTo = null,
+}) {
+  const searchClean = search.trim().toLowerCase();
+  const searchParam = searchClean ? `%${searchClean}%` : null;
+
+  const searchClause = searchClean
+    ? sql`
+      AND (
+        LOWER(s.name) LIKE ${searchParam}
+        OR LOWER(s.email) LIKE ${searchParam}
+        OR LOWER(s.kreisverband) LIKE ${searchParam}
+        OR EXISTS (
+          SELECT 1 FROM regexp_split_to_table(LOWER(s.name), '\s+') AS w
+          WHERE LENGTH(w) >= 2
+            AND levenshtein_less_equal(w, ${searchClean}, GREATEST(1, ROUND(LENGTH(w) * 0.4)::int))
+                <= GREATEST(1, ROUND(LENGTH(w) * 0.4)::int)
+        )
+        OR (LENGTH(s.kreisverband) >= 3
+            AND levenshtein_less_equal(
+                  LOWER(s.kreisverband), ${searchClean},
+                  GREATEST(2, ROUND(GREATEST(LENGTH(s.kreisverband), ${searchClean.length}) * 0.35)::int)
+                ) <= GREATEST(2, ROUND(GREATEST(LENGTH(s.kreisverband), ${searchClean.length}) * 0.35)::int)
+        )
+      )
+    `
+    : sql``;
+
+  const stateClause = state ? sql`AND s.state = ${state}` : sql``;
+  const kvClause = kv ? sql`AND s.kreisverband = ${kv}` : sql``;
+  const fromClause = dateFrom ? sql`AND s.created_at >= ${dateFrom}` : sql``;
+  const toClause = dateTo ? sql`AND s.created_at <= ${dateTo}` : sql``;
+
+  return sql`
+    s.verified = TRUE AND s.newsletter = TRUE
+    ${searchClause}
+    ${stateClause}
+    ${kvClause}
+    ${fromClause}
+    ${toClause}
+  `;
+}
+
+export async function listNewsletterSigners({
+  search = "",
+  state = "",
+  kv = "",
+  dateFrom = null,
+  dateTo = null,
+  limit = 25,
+  offset = 0,
+  sort = "desc",
+}) {
+  limit = Math.min(Math.max(1, limit), 100);
+  offset = Math.max(0, offset);
+  const sortDir = sort === "asc" ? sql`ASC` : sql`DESC`;
+  const where = newsletterSignerWhere({ search, state, kv, dateFrom, dateTo });
+
+  const [{ total }] = await sql`
+    SELECT COUNT(*)::int AS total FROM signers s WHERE ${where}
+  `;
+  const signers = await sql`
+    SELECT s.id, s.name, s.email, s.kreisverband, s.occupation, s.state, s.created_at
+    FROM signers s
+    WHERE ${where}
+    ORDER BY s.created_at ${sortDir}
+    LIMIT ${limit} OFFSET ${offset}
+  `;
+  return { signers, total };
+}
+
+export async function listNewsletterSignerIds({
+  search = "",
+  state = "",
+  kv = "",
+  dateFrom = null,
+  dateTo = null,
+  cap = 20000,
+} = {}) {
+  const where = newsletterSignerWhere({ search, state, kv, dateFrom, dateTo });
+  const rows = await sql`
+    SELECT s.id FROM signers s
+    WHERE ${where}
+    ORDER BY s.created_at DESC
+    LIMIT ${cap}
+  `;
+  return rows.map((r) => r.id);
+}
+
+export async function getNewsletterSignerFilters() {
+  const states = await sql`
+    SELECT state, COUNT(*)::int AS count
+    FROM signers
+    WHERE verified = TRUE AND newsletter = TRUE AND state != ''
+    GROUP BY state
+    ORDER BY count DESC, state ASC
+  `;
+  const kvs = await sql`
+    SELECT kreisverband, COUNT(*)::int AS count
+    FROM signers
+    WHERE verified = TRUE AND newsletter = TRUE AND kreisverband != ''
+    GROUP BY kreisverband
+    ORDER BY count DESC, kreisverband ASC
+  `;
+  return { states, kvs };
+}
+
 export async function getStats() {
   const [row] = await sql`
     SELECT
@@ -436,7 +549,8 @@ export async function deleteEmailTemplate(id) {
 export async function listCampaigns() {
   return await sql`
     SELECT c.id, c.template_id, t.name AS template_name, c.subject, c.scheduled_at,
-           c.sent_at, c.status, c.recipient_count, c.sent_offset, c.audience, c.created_at
+           c.sent_at, c.status, c.recipient_count, c.sent_offset, c.audience,
+           COALESCE(cardinality(c.recipient_ids), 0) AS selection_count, c.created_at
     FROM campaigns c
     LEFT JOIN email_templates t ON t.id = c.template_id
     ORDER BY c.scheduled_at DESC, c.created_at DESC
@@ -448,10 +562,14 @@ export async function createCampaign({
   subject,
   scheduledAt,
   audience = "newsletter",
+  recipientIds = null,
 }) {
+  const ids = audience === "selection" && Array.isArray(recipientIds)
+    ? recipientIds
+    : null;
   const [campaign] = await sql`
-    INSERT INTO campaigns (template_id, subject, scheduled_at, audience)
-    SELECT id, ${subject}, ${scheduledAt}, ${audience}
+    INSERT INTO campaigns (template_id, subject, scheduled_at, audience, recipient_ids)
+    SELECT id, ${subject}, ${scheduledAt}, ${audience}, ${ids}
     FROM email_templates
     WHERE id = ${templateId}
     RETURNING id, template_id, subject, scheduled_at, sent_at, status, recipient_count, audience, created_at
@@ -481,7 +599,7 @@ export async function claimDueCampaigns() {
       ORDER BY scheduled_at ASC
       FOR UPDATE SKIP LOCKED
     )
-    RETURNING id, template_id, subject, scheduled_at, audience, sent_offset
+    RETURNING id, template_id, subject, scheduled_at, audience, sent_offset, recipient_ids
   `;
 }
 
@@ -537,6 +655,18 @@ export async function getNewsletterRecipients() {
     FROM signers
     WHERE verified = TRUE
       AND newsletter = TRUE
+    ORDER BY created_at ASC
+  `;
+}
+
+export async function getNewsletterRecipientsByIds(ids) {
+  if (!Array.isArray(ids) || ids.length === 0) return [];
+  return await sql`
+    SELECT id, name, email, unsubscribe_token
+    FROM signers
+    WHERE verified = TRUE
+      AND newsletter = TRUE
+      AND id = ANY(${ids})
     ORDER BY created_at ASC
   `;
 }

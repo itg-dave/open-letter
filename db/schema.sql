@@ -134,3 +134,6 @@ CREATE TABLE IF NOT EXISTS app_settings (
 
 -- Track how many emails were sent so a failed campaign can resume mid-list.
 ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS sent_offset INTEGER NOT NULL DEFAULT 0;
+
+-- Hand-picked recipient list for audience = 'selection' (NULL for other audiences).
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS recipient_ids INTEGER[];

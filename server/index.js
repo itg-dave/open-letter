@@ -43,6 +43,10 @@ import {
   markCampaignFailed,
   incrementCampaignOffset,
   getNewsletterRecipients,
+  getNewsletterRecipientsByIds,
+  listNewsletterSigners,
+  listNewsletterSignerIds,
+  getNewsletterSignerFilters,
   getNewsletterRecipientByEmail,
   getZoomRecipientByEmail,
   refreshUnsubscribeToken,
@@ -238,6 +242,24 @@ function sanitizeHtml(str, max = 120000) {
   return String(str || "").slice(0, max);
 }
 
+// Parse the shared filter params for the admin newsletter-signer list.
+function parseSignerFilters(req) {
+  const params = new URL(req.url).searchParams;
+  const parseDate = (key) => {
+    const raw = params.get(key);
+    if (!raw) return null;
+    const d = new Date(raw);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  };
+  return {
+    search: sanitize(params.get("search") || "", 120),
+    state: sanitize(params.get("state") || "", 80),
+    kv: sanitize(params.get("kv") || "", 120),
+    dateFrom: parseDate("from"),
+    dateTo: parseDate("to"),
+  };
+}
+
 function sanitizeEmail(str) {
   return String(str || "")
     .trim()
@@ -393,10 +415,13 @@ async function sendCampaign(campaign) {
 
   const audience = campaign.audience || "newsletter";
   const isZoom = audience === "zoom" || audience === "zoom_delegates";
+  const isSelection = audience === "selection";
 
   const recipients = isZoom
     ? await getZoomRecipients({ delegatesOnly: audience === "zoom_delegates" })
-    : await getNewsletterRecipients();
+    : isSelection
+      ? await getNewsletterRecipientsByIds(campaign.recipient_ids || [])
+      : await getNewsletterRecipients();
   const stats = await getNewsletterStats();
   const signerCount = stats.signerCount?.toLocaleString("de-DE") || "0";
   const zoomCfg = await getZoomConfig();
@@ -1518,19 +1543,42 @@ const server = Bun.serve({
           const templateId = parseInt(body.template_id, 10);
           const subject = sanitize(body.subject, 240);
           const scheduledAt = new Date(body.scheduled_at);
-          const audience = ["newsletter", "zoom", "zoom_delegates"].includes(
-            body.audience,
-          )
+          const audience = [
+            "newsletter",
+            "zoom",
+            "zoom_delegates",
+            "selection",
+          ].includes(body.audience)
             ? body.audience
             : "newsletter";
           if (!templateId || !subject || Number.isNaN(scheduledAt.getTime())) {
             return json({ error: "Invalid campaign" }, 400);
+          }
+          let recipientIds = null;
+          if (audience === "selection") {
+            const raw = Array.isArray(body.recipient_ids)
+              ? body.recipient_ids
+              : [];
+            recipientIds = [
+              ...new Set(
+                raw
+                  .map((id) => parseInt(id, 10))
+                  .filter((id) => Number.isInteger(id) && id > 0),
+              ),
+            ];
+            if (recipientIds.length === 0) {
+              return json({ error: "Keine Empfänger*innen ausgewählt" }, 400);
+            }
+            if (recipientIds.length > 20000) {
+              return json({ error: "Zu viele Empfänger*innen (max. 20000)" }, 400);
+            }
           }
           const campaign = await createCampaign({
             templateId,
             subject,
             scheduledAt,
             audience,
+            recipientIds,
           });
           if (!campaign) return json({ error: "Template not found" }, 404);
           return json(campaign, 201);
@@ -1544,6 +1592,45 @@ const server = Bun.serve({
           const deleted = await cancelCampaign(parseInt(req.params.id, 10));
           if (!deleted) return json({ error: "Cannot cancel campaign" }, 400);
           return json({ ok: true });
+        });
+      },
+    },
+
+    "/api/admin/newsletter-signers": {
+      async GET(req) {
+        return adminJson(req, async () => {
+          const filters = parseSignerFilters(req);
+          const limit = parseInt(
+            new URL(req.url).searchParams.get("limit") || "25",
+            10,
+          );
+          const offset = parseInt(
+            new URL(req.url).searchParams.get("offset") || "0",
+            10,
+          );
+          const result = await listNewsletterSigners({
+            ...filters,
+            limit: Number.isNaN(limit) ? 25 : limit,
+            offset: Number.isNaN(offset) ? 0 : offset,
+          });
+          return json(result);
+        });
+      },
+    },
+
+    "/api/admin/newsletter-signer-filters": {
+      async GET(req) {
+        return adminJson(req, async () =>
+          json(await getNewsletterSignerFilters()),
+        );
+      },
+    },
+
+    "/api/admin/newsletter-signer-ids": {
+      async GET(req) {
+        return adminJson(req, async () => {
+          const ids = await listNewsletterSignerIds(parseSignerFilters(req));
+          return json({ ids });
         });
       },
     },

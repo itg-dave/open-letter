@@ -2429,6 +2429,63 @@ footer {
   gap: 12px;
 }
 
+/* ---------- Unterzeichner (signer list) ---------- */
+.admin-signers-layout {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 420px);
+  align-items: start;
+}
+
+.signer-filter-bar {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  align-items: end;
+}
+
+.signer-selection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.signer-selection-actions button,
+.signer-pagination button {
+  border: 1px solid var(--akzent);
+  background: var(--weiss);
+  padding: 6px 12px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.signer-selection-actions button:disabled,
+.signer-pagination button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.signer-pagination {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.signer-row {
+  cursor: pointer;
+  user-select: none;
+}
+
+.signer-row:hover {
+  background: color-mix(in srgb, var(--akzent) 8%, var(--weiss));
+}
+
+.signer-row[aria-selected="true"] {
+  background: color-mix(in srgb, var(--akzent) 14%, var(--weiss));
+}
+
 /* ---------- Calendar (react-day-picker v10) ---------- */
 .rdp-root {
   --rdp-accent-color: var(--akzent);
@@ -2775,6 +2832,7 @@ footer {
   .admin-layout,
   .admin-editor-grid,
   .admin-campaigns,
+  .admin-signers-layout,
   .settings-grid {
     grid-template-columns: 1fr;
   }
