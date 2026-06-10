@@ -151,7 +151,7 @@ export const ZoomForm = memo(function ZoomForm({
         )}
       </div>
 
-      <div className="field" style={{ position: "relative" }}>
+      <div className="field field--relative">
         <label htmlFor="zoom-kv">
           Kreisverband <span className="opt"> optional</span>
         </label>

@@ -400,6 +400,13 @@ h1.headline .banner {
   z-index: 3;
 }
 
+.hero-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: flex-start;
+}
+
 @media (max-width: 900px) {
   .hero-row {
     grid-template-columns: 1fr;
@@ -496,6 +503,12 @@ h1.headline .banner {
   color: var(--weiss);
   transform: translate(-2px, -2px);
   box-shadow: 4px 4px 0 var(--rot);
+}
+
+.scrollcta--secondary {
+  background: transparent;
+  color: var(--akzent);
+  border-color: var(--akzent);
 }
 
 /* ---------- Störer (Zoom) ---------- */
@@ -947,6 +960,10 @@ h1.headline .banner {
   margin-bottom: 16px;
 }
 
+.field--relative {
+  position: relative;
+}
+
 .field label {
   display: block;
   font-family: "Work Sans";
@@ -1201,6 +1218,10 @@ h1.headline .banner {
   color: var(--grau);
 }
 
+.hint--error {
+  color: var(--fehler);
+}
+
 .modal-body .success-title {
   font-family: "Work Sans";
   font-weight: 900;
@@ -1256,6 +1277,11 @@ h1.headline .banner {
   background: var(--rot);
   transform: translate(-2px, -2px);
   box-shadow: 4px 4px 0 var(--akzent);
+}
+
+.confirm-btn--accent {
+  background: var(--rot);
+  border-color: var(--rot);
 }
 
 .modal-body .confirm-btn:focus-visible {
@@ -1422,6 +1448,9 @@ h1.headline .banner {
   transition:
     background 0.12s ease,
     color 0.12s ease;
+  min-width: 0;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .filter-chip:hover {
@@ -1473,6 +1502,7 @@ h1.headline .banner {
   transition: background 0.12s ease;
   position: relative;
   isolation: isolate;
+  min-width: 0;
 }
 
 .signer.new::after {
@@ -1522,6 +1552,8 @@ h1.headline .banner {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .signer .kv {
@@ -1603,6 +1635,9 @@ h1.headline .banner {
   transition:
     transform 0.1s ease,
     box-shadow 0.1s ease;
+  min-width: 0;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .occupation-chip:hover {
@@ -2862,6 +2897,18 @@ footer {
   border-top: 1px solid var(--akzent);
   margin: 30px 0 24px;
   opacity: 0.2;
+}
+
+.unsubscribe-delete {
+  margin-top: 24px;
+  border-top: 1px solid var(--akzent);
+  padding-top: 20px;
+}
+
+.unsubscribe-delete-copy {
+  font-size: 14px;
+  color: var(--grau);
+  margin: 0 0 16px;
 }
 
 .unsubscribe-actions {

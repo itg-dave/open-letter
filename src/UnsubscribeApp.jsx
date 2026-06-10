@@ -44,9 +44,7 @@ export default function UnsubscribeApp() {
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch(
-          `/api/unsubscribe/${token}?from=${source}`,
-        );
+        const res = await fetch(`/api/unsubscribe/${token}?from=${source}`);
         if (!res.ok) {
           setState({
             loading: false,
@@ -75,18 +73,24 @@ export default function UnsubscribeApp() {
     setSaved(false);
     setSaveError("");
     try {
-      const res = await fetch(`/api/unsubscribe/${token}/update?from=${source}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
+      const res = await fetch(
+        `/api/unsubscribe/${token}/update?from=${source}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(form),
+        },
+      );
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
         setSaveError(payload.error || "Speichern fehlgeschlagen.");
         return;
       }
       setSaved(true);
-      setState((current) => ({ ...current, data: { ...current.data, ...payload } }));
+      setState((current) => ({
+        ...current,
+        data: { ...current.data, ...payload },
+      }));
       setForm(formFromData(payload));
     } catch {
       setSaveError("Die Verbindung ist fehlgeschlagen.");
@@ -160,11 +164,7 @@ export default function UnsubscribeApp() {
                 <p className="anrede">{d.emailMasked}</p>
 
                 {(d.hasSigner || d.hasZoom) && (
-                  <form
-                    className="unsubscribe-edit"
-                    onSubmit={save}
-                    noValidate
-                  >
+                  <form className="unsubscribe-edit" onSubmit={save} noValidate>
                     <h2>Deine Angaben</h2>
                     <p className="unsubscribe-edit-intro">
                       Hier kannst du deine Daten jederzeit anpassen.
@@ -339,8 +339,8 @@ export default function UnsubscribeApp() {
                 </div>
 
                 {d.canDeleteSigner && (
-                  <div style={{ marginTop: 24, borderTop: "1px solid var(--akzent)", paddingTop: 20 }}>
-                    <p style={{ fontSize: 14, color: "var(--grau)" }}>
+                  <div className="unsubscribe-delete">
+                    <p className="unsubscribe-delete-copy">
                       Du kannst auch deine Unterschrift und alle damit
                       verbundenen Daten unwiderruflich löschen:
                     </p>

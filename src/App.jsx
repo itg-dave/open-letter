@@ -627,18 +627,20 @@ export default function App() {
           >
             Unterstützer*innen
           </a>
-          {/* ZOOM-DISABLED: flip false→true to re-enable */ false &&
-            zoomOpen && (
-              <a
-                href="#zoom"
-                onClick={(e) => {
-                  e.preventDefault();
-                  scrollTo("zoom");
-                }}
-              >
-                Zoom-Treffen
-              </a>
-            )}
+          {
+            /* ZOOM-DISABLED: flip false→true to re-enable */ false &&
+              zoomOpen && (
+                <a
+                  href="#zoom"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    scrollTo("zoom");
+                  }}
+                >
+                  Zoom-Treffen
+                </a>
+              )
+          }
         </nav>
         <button
           className="cta topbar-cta"
@@ -664,7 +666,6 @@ export default function App() {
         className={"mobile-nav" + (navOpen ? " open" : "")}
         aria-label="Mobilnavigation"
         aria-hidden={!navOpen}
-        inert={navOpen ? undefined : ""}
       >
         <a
           href="#brief"
@@ -696,18 +697,20 @@ export default function App() {
         >
           Unterstützer*innen
         </a>
-        {/* ZOOM-DISABLED: flip false→true to re-enable */ false && (
-          <a
-            href="#zoom"
-            onClick={(e) => {
-              e.preventDefault();
-              setNavOpen(false);
-              scrollTo("zoom");
-            }}
-          >
-            Zoom-Treffen
-          </a>
-        )}
+        {
+          /* ZOOM-DISABLED: flip false→true to re-enable */ false && (
+            <a
+              href="#zoom"
+              onClick={(e) => {
+                e.preventDefault();
+                setNavOpen(false);
+                scrollTo("zoom");
+              }}
+            >
+              Zoom-Treffen
+            </a>
+          )
+        }
         <a
           href="#unterzeichnen"
           className="mobile-nav-cta"
@@ -774,35 +777,30 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* ZOOM-DISABLED: flip false→true to re-enable */ false &&
-                  total >= 2000 &&
-                  zoomOpen && (
-                  <button
-                    className="stoerer"
-                    onClick={() => scrollTo("zoom")}
-                    aria-label="Wir sind 2000 — jetzt zum Zoom-Treffen anmelden"
-                  >
-                    <span className="stoerer-head">Wir sind 2000!</span>
-                    <span className="stoerer-body">
-                      Jetzt treffen wir uns zum Zoom und planen die nächsten
-                      Schritte.
-                    </span>
-                    <span className="stoerer-date">9.6. · 20 Uhr</span>
-                    <span className="stoerer-cta">
-                      Sei dabei! <span aria-hidden="true">→</span>
-                    </span>
-                  </button>
-                )}
+                {
+                  /* ZOOM-DISABLED: flip false→true to re-enable */ false &&
+                    total >= 2000 &&
+                    zoomOpen && (
+                      <button
+                        className="stoerer"
+                        onClick={() => scrollTo("zoom")}
+                        aria-label="Wir sind 2000 — jetzt zum Zoom-Treffen anmelden"
+                      >
+                        <span className="stoerer-head">Wir sind 2000!</span>
+                        <span className="stoerer-body">
+                          Jetzt treffen wir uns zum Zoom und planen die nächsten
+                          Schritte.
+                        </span>
+                        <span className="stoerer-date">9.6. · 20 Uhr</span>
+                        <span className="stoerer-cta">
+                          Sei dabei! <span aria-hidden="true">→</span>
+                        </span>
+                      </button>
+                    )
+                }
               </div>
 
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 14,
-                  alignItems: "flex-start",
-                }}
-              >
+              <div className="hero-actions">
                 <button
                   className="scrollcta"
                   onClick={() => scrollTo("unterzeichnen")}
@@ -810,13 +808,8 @@ export default function App() {
                   Jetzt mitzeichnen <span aria-hidden="true">→</span>
                 </button>
                 <button
-                  className="scrollcta"
+                  className="scrollcta scrollcta--secondary"
                   onClick={() => scrollTo("brief")}
-                  style={{
-                    background: "transparent",
-                    color: "var(--akzent)",
-                    borderColor: "var(--akzent)",
-                  }}
                 >
                   Brief lesen
                 </button>
@@ -1085,13 +1078,18 @@ export default function App() {
                 Berufe
               </button>
               {!showOccupations && !showKreisverband && !showMap && (
-                <input
-                  className="search"
-                  placeholder="Suchen nach Name oder Kreisverband…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  aria-label="Suche nach Name oder Kreisverband"
-                />
+                <>
+                  <label htmlFor="signer-search" className="sr-only">
+                    Suche nach Name oder Kreisverband
+                  </label>
+                  <input
+                    id="signer-search"
+                    className="search"
+                    placeholder="Suchen nach Name oder Kreisverband…"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                </>
               )}
             </div>
 
@@ -1170,50 +1168,56 @@ export default function App() {
           </div>
         </section>
 
-        {/* ZOOM-DISABLED: flip false→true to re-enable */ false && zoomOpen && (
-          <section
-            className="section sign-section zoom-section"
-            id="zoom"
-            aria-label="Anmeldung zum Zoom-Treffen"
-          >
-            <div className="section-inner">
-              <div className="sign-grid">
-                <div className="sign-intro">
-                  <span className="section-num">04 / Zoom-Treffen</span>
-                  <h2>
-                    Wir treffen uns
-                    <br />
-                    <span className="rot">am 9. Juni.</span>
-                  </h2>
-                  <p className="zoom-when">
-                    <strong>Montag, 9. Juni · 20 Uhr · per Zoom</strong>
-                  </p>
-                  <ul>
-                    <li>
-                      Wir planen die öffentliche Übergabe des offenen Briefes.
-                    </li>
-                    <li>
-                      Wir sprechen über eine Choreografie auf dem Parteitag.
-                    </li>
-                    <li>Wir verabreden die nächsten gemeinsamen Schritte.</li>
-                  </ul>
-                  <p className="privacy">
-                    Den Einwahllink schicken wir dir vor dem Termin per E-Mail.
-                    Deine Angaben nutzen wir ausschließlich für die Organisation
-                    des Treffens.
-                  </p>
-                </div>
+        {
+          /* ZOOM-DISABLED: flip false→true to re-enable */ false &&
+            zoomOpen && (
+              <section
+                className="section sign-section zoom-section"
+                id="zoom"
+                aria-label="Anmeldung zum Zoom-Treffen"
+              >
+                <div className="section-inner">
+                  <div className="sign-grid">
+                    <div className="sign-intro">
+                      <span className="section-num">04 / Zoom-Treffen</span>
+                      <h2>
+                        Wir treffen uns
+                        <br />
+                        <span className="rot">am 9. Juni.</span>
+                      </h2>
+                      <p className="zoom-when">
+                        <strong>Montag, 9. Juni · 20 Uhr · per Zoom</strong>
+                      </p>
+                      <ul>
+                        <li>
+                          Wir planen die öffentliche Übergabe des offenen
+                          Briefes.
+                        </li>
+                        <li>
+                          Wir sprechen über eine Choreografie auf dem Parteitag.
+                        </li>
+                        <li>
+                          Wir verabreden die nächsten gemeinsamen Schritte.
+                        </li>
+                      </ul>
+                      <p className="privacy">
+                        Den Einwahllink schicken wir dir vor dem Termin per
+                        E-Mail. Deine Angaben nutzen wir ausschließlich für die
+                        Organisation des Treffens.
+                      </p>
+                    </div>
 
-                {/* ZOOM-DISABLED: re-enable by restoring this <ZoomForm/> (def below) */}
-                {/* <ZoomForm
+                    {/* ZOOM-DISABLED: re-enable by restoring this <ZoomForm/> (def below) */}
+                    {/* <ZoomForm
                   onSubmit={handleZoomSubmit}
                   serverError={zoomError}
                   kvNames={signFormKvNames}
                 /> */}
-              </div>
-            </div>
-          </section>
-        )}
+                  </div>
+                </div>
+              </section>
+            )
+        }
       </main>
 
       <footer>
@@ -1286,11 +1290,7 @@ export default function App() {
               <p className="hint">
                 E-Mails können manchmal ein paar Minuten auf sich warten lassen.
               </p>
-              {resendError && (
-                <p className="hint" style={{ color: "var(--fehler)" }}>
-                  {resendError}
-                </p>
-              )}
+              {resendError && <p className="hint hint--error">{resendError}</p>}
               <button
                 className="resend-btn"
                 onClick={handleResend}
@@ -1351,8 +1351,7 @@ export default function App() {
                 bei {ZIEL} stehen.
               </p>
               <button
-                className="confirm-btn"
-                style={{ background: "var(--rot)", borderColor: "var(--rot)" }}
+                className="confirm-btn confirm-btn--accent"
                 onClick={() => {
                   closeSuccess();
                   scrollTo("liste");
@@ -1581,7 +1580,7 @@ const SignForm = memo(function SignForm({
         )}
       </div>
 
-      <div className="field" style={{ position: "relative" }}>
+      <div className="field field--relative">
         <label htmlFor="sign-kv">
           Kreisverband <span className="opt"> optional</span>
         </label>
@@ -1656,7 +1655,7 @@ const SignForm = memo(function SignForm({
         )}
       </div>
 
-      <div className="field" style={{ position: "relative" }}>
+      <div className="field field--relative">
         <label htmlFor="sign-occupation">
           Beruf <span className="opt"> optional</span>
         </label>
