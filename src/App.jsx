@@ -1094,14 +1094,7 @@ export default function App() {
             </div>
 
             {error && (
-              <p
-                role="alert"
-                style={{
-                  color: "var(--rot-text)",
-                  textAlign: "center",
-                  padding: 20,
-                }}
-              >
+              <p className="alert-error" role="alert">
                 {error}
               </p>
             )}
@@ -1979,10 +1972,7 @@ function KreisverbandMap({ kvGroups }) {
   return (
     <div className="kv-map-wrap">
       <div className="kv-map-scroll" ref={wrapRef}>
-        <div
-          style={{ position: "relative", width: "100%", maxWidth: 900 }}
-          onClick={() => setPopup(null)}
-        >
+        <div className="kv-map-content" onClick={() => setPopup(null)}>
           <svg
             viewBox={`${MAP_VB.x} ${MAP_VB.y} ${MAP_VB.w} ${MAP_VB.h}`}
             className="kv-map"
@@ -1997,7 +1987,7 @@ function KreisverbandMap({ kvGroups }) {
                   y={chip.y}
                   width={chip.w + 8}
                   height={chip.h + 8}
-                  style={{ overflow: "visible" }}
+                  className="kv-map-foreign"
                 >
                   <button
                     type="button"

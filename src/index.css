@@ -1479,12 +1479,31 @@ h1.headline .banner {
   outline: none;
 }
 
+.alert-error {
+  color: var(--rot-text);
+  text-align: center;
+  padding: 20px;
+}
+
+.kv-map-content {
+  position: relative;
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.kv-map-foreign {
+  overflow: visible;
+}
+
 .signers-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 1px;
   background: var(--akzent);
   border: 1px solid var(--akzent);
+  content-visibility: auto;
+  contain: layout style paint;
 }
 
 @media (max-width: 780px) {
