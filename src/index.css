@@ -767,6 +767,294 @@ h1.headline .banner {
   letter-spacing: var(--ls-body);
 }
 
+/* ---------- FAQ ---------- */
+.faq-section {
+  background: var(--weiss);
+}
+
+.faq-wrap {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: clamp(40px, 5vw, 80px);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .faq-wrap {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+}
+
+.faq-aside .num {
+  display: block;
+  font-family: "Work Sans";
+  font-weight: 900;
+  font-size: 14px;
+  color: var(--rot-text);
+  letter-spacing: var(--ls-wide);
+  margin-bottom: 14px;
+}
+
+.faq-aside h2 {
+  font-family: "Work Sans";
+  font-weight: 900;
+  font-size: clamp(34px, 4vw, 56px);
+  line-height: 0.92;
+  letter-spacing: var(--ls-tight);
+  margin: 0 0 24px;
+}
+
+@media (min-width: 901px) {
+  .faq-aside {
+    position: sticky;
+    top: 108px;
+    align-self: start;
+  }
+}
+
+.faq-intro {
+  max-width: 42ch;
+}
+
+.faq-intro p {
+  font-size: 15.5px;
+  line-height: 1.6;
+  margin: 0 0 14px;
+  color: var(--akzent);
+  letter-spacing: var(--ls-body);
+}
+
+.faq-intro p:last-child {
+  margin-bottom: 0;
+}
+
+.faq-intro em {
+  font-style: normal;
+  color: var(--grau);
+  font-size: 13.5px;
+}
+
+.faq-list {
+  border: 1px solid var(--akzent);
+  box-shadow: var(--shadow-ml) var(--shadow-ml) 0 var(--akzent);
+  background: var(--weiss);
+}
+
+.faq-item {
+  border-bottom: 1px solid var(--akzent);
+}
+
+.faq-item:last-child {
+  border-bottom: none;
+}
+
+.faq-q {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 20px 24px;
+  cursor: pointer;
+  font-family: "Work Sans";
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 1.3;
+  color: var(--akzent);
+  letter-spacing: var(--ls-body);
+  list-style: none;
+  transition: background 0.12s ease;
+}
+
+.faq-q::-webkit-details-marker {
+  display: none;
+}
+
+.faq-q:hover {
+  background: var(--fond);
+}
+
+.faq-q:focus-visible {
+  outline: 2px solid var(--rot);
+  outline-offset: -2px;
+}
+
+/* +/− indicator, flips when the item is open */
+.faq-q::after {
+  content: "+";
+  flex: none;
+  font-family: "Work Sans";
+  font-weight: 900;
+  font-size: 24px;
+  line-height: 1;
+  color: var(--rot-text);
+  transform: translateY(-1px);
+}
+
+.faq-item[open] > .faq-q {
+  background: var(--fond);
+}
+
+.faq-item[open] > .faq-q::after {
+  content: "−";
+}
+
+.faq-answer {
+  padding: 4px 28px 26px;
+  max-width: 68ch;
+}
+
+.faq-answer p {
+  font-size: 16px;
+  line-height: 1.65;
+  margin: 0 0 14px;
+  color: var(--akzent);
+  letter-spacing: var(--ls-body);
+}
+
+.faq-answer p:last-child {
+  margin-bottom: 0;
+}
+
+.faq-answer strong {
+  font-weight: 700;
+}
+
+.faq-answer ul,
+.faq-answer ol {
+  margin: 0 0 16px;
+  padding-left: 22px;
+}
+
+.faq-answer li {
+  font-size: 16px;
+  line-height: 1.6;
+  margin-bottom: 8px;
+  color: var(--akzent);
+  letter-spacing: var(--ls-body);
+}
+
+.faq-answer h4 {
+  font-family: "Work Sans";
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: var(--ls-caps);
+  text-transform: uppercase;
+  color: var(--grau-stark);
+  margin: 24px 0 12px;
+}
+
+/* Line-item calculation blocks (Beispiel 1 + Gehaltsdeckel-Äquivalent) */
+.faq-calc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 18px;
+  margin: 0 0 22px;
+}
+
+.faq-calc {
+  border: 1px solid var(--akzent);
+  background: var(--fond);
+  padding: 18px 20px;
+}
+
+.faq-calc-title {
+  font-family: "Work Sans";
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: var(--ls-caps);
+  text-transform: uppercase;
+  color: var(--akzent);
+  margin: 0 0 4px;
+}
+
+.faq-calc-sub {
+  font-size: 13.5px;
+  line-height: 1.4;
+  color: var(--grau-stark);
+  margin: 0 0 14px;
+}
+
+.faq-calc-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 6px 0;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--akzent);
+}
+
+.faq-calc-row .amount {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.faq-calc-row .note {
+  font-size: 12.5px;
+  color: var(--grau);
+}
+
+.faq-calc-row--result {
+  border-top: 2px solid var(--akzent);
+  margin-top: 6px;
+  padding-top: 12px;
+  font-family: "Work Sans";
+  font-weight: 700;
+}
+
+.faq-calc-row--result .amount {
+  font-weight: 900;
+  font-size: 17px;
+}
+
+.faq-calc-note {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--grau);
+  margin: 4px 0 0;
+}
+
+.faq-footnotes {
+  margin: 20px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--grau-hell);
+  list-style: none;
+}
+
+.faq-footnotes li {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--grau);
+  margin-bottom: 8px;
+}
+
+@media (max-width: 600px) {
+  .faq-list {
+    box-shadow: var(--shadow-sm) var(--shadow-sm) 0 var(--akzent);
+  }
+
+  .faq-q {
+    padding: 16px 16px;
+    font-size: 16px;
+  }
+
+  .faq-answer {
+    padding: 4px 16px 20px;
+  }
+
+  .faq-calc {
+    padding: 14px 14px;
+  }
+
+  .faq-calc-row {
+    font-size: 14px;
+  }
+}
+
 /* ---------- Forderungen Strip ---------- */
 .demands {
   background: var(--akzent);
