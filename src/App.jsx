@@ -1226,7 +1226,7 @@ export default function App() {
               </aside>
 
               <div className="faq-list">
-                <details className="faq-item" open>
+                <details className="faq-item">
                   <summary className="faq-q">
                     Der Parteivorstand hat einen Antrag für einen Gehaltsdeckel
                     für den Bundesparteitag im Juni vorgelegt. Welche Regelungen
