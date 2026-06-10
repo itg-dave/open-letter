@@ -1,19 +1,37 @@
-CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;
+-- SQLite (SQLCipher) schema for diaetendeckel.
+--
+-- Notes on the Postgres → SQLite translation:
+--   SERIAL PRIMARY KEY      -> INTEGER PRIMARY KEY AUTOINCREMENT
+--   BOOLEAN                 -> INTEGER (0/1)
+--   TIMESTAMPTZ             -> TEXT (ISO-8601 UTC, e.g. 2026-06-09T12:34:56.789Z)
+--   DEFAULT NOW()           -> DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+--   INTEGER[] (arrays)      -> TEXT holding a JSON array (or NULL)
+-- The strftime default is chosen so DB-generated timestamps share the exact
+-- same format as JavaScript `new Date().toISOString()`, keeping lexicographic
+-- comparisons (`created_at > ?`) correct.
+--
+-- SQLite has no `ALTER TABLE ADD COLUMN IF NOT EXISTS`, so every column lives in
+-- the consolidated CREATE TABLE below. `CREATE TABLE/INDEX IF NOT EXISTS` keeps
+-- the file idempotent across restarts.
 
 CREATE TABLE IF NOT EXISTS signers (
-  id                 SERIAL PRIMARY KEY,
-  name               TEXT NOT NULL,
-  email              TEXT NOT NULL UNIQUE,
-  kreisverband       TEXT DEFAULT '',
-  newsletter         BOOLEAN DEFAULT FALSE,
-  show_publicly      BOOLEAN DEFAULT TRUE,
-  verified           BOOLEAN DEFAULT FALSE,
-  verification_token TEXT UNIQUE,
-  token_expires_at   TIMESTAMPTZ,
-  created_at         TIMESTAMPTZ DEFAULT NOW()
+  id                            INTEGER PRIMARY KEY AUTOINCREMENT,
+  name                          TEXT NOT NULL,
+  email                         TEXT NOT NULL UNIQUE,
+  kreisverband                  TEXT DEFAULT '',
+  occupation                    TEXT DEFAULT '',
+  state                         TEXT DEFAULT '',
+  newsletter                    INTEGER NOT NULL DEFAULT 0,
+  show_publicly                 INTEGER NOT NULL DEFAULT 1,
+  verified                      INTEGER NOT NULL DEFAULT 0,
+  verification_token            TEXT UNIQUE,
+  token_expires_at              TEXT,
+  deletion_token                TEXT UNIQUE,
+  deletion_token_expires_at     TEXT,
+  unsubscribe_token             TEXT UNIQUE,
+  unsubscribe_token_created_at  TEXT,
+  created_at                    TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
-
-ALTER TABLE signers ADD COLUMN IF NOT EXISTS show_publicly BOOLEAN DEFAULT TRUE;
 
 CREATE INDEX IF NOT EXISTS idx_signers_verified
   ON signers (verified, created_at DESC);
@@ -27,12 +45,7 @@ CREATE INDEX IF NOT EXISTS idx_signers_token
 
 CREATE INDEX IF NOT EXISTS idx_signers_kreisverband
   ON signers (kreisverband)
-  WHERE kreisverband != '' AND verified = TRUE;
-
-ALTER TABLE signers ADD COLUMN IF NOT EXISTS deletion_token TEXT UNIQUE;
-ALTER TABLE signers ADD COLUMN IF NOT EXISTS deletion_token_expires_at TIMESTAMPTZ;
-ALTER TABLE signers ADD COLUMN IF NOT EXISTS unsubscribe_token TEXT UNIQUE;
-ALTER TABLE signers ADD COLUMN IF NOT EXISTS unsubscribe_token_created_at TIMESTAMPTZ;
+  WHERE kreisverband != '' AND verified = 1;
 
 CREATE INDEX IF NOT EXISTS idx_signers_deletion_token
   ON signers (deletion_token)
@@ -44,96 +57,87 @@ CREATE INDEX IF NOT EXISTS idx_signers_unsubscribe_token
 
 CREATE INDEX IF NOT EXISTS idx_signers_newsletter
   ON signers (verified, newsletter)
-  WHERE verified = TRUE AND newsletter = TRUE;
+  WHERE verified = 1 AND newsletter = 1;
+
+CREATE INDEX IF NOT EXISTS idx_signers_state
+  ON signers (state)
+  WHERE verified = 1 AND state != '';
 
 CREATE TABLE IF NOT EXISTS email_templates (
-  id           SERIAL PRIMARY KEY,
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
   slug         TEXT NOT NULL UNIQUE,
   name         TEXT NOT NULL,
   subject      TEXT NOT NULL,
   html_body    TEXT NOT NULL,
-  updated_at   TIMESTAMPTZ DEFAULT NOW()
+  updated_at   TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
 CREATE TABLE IF NOT EXISTS campaigns (
-  id              SERIAL PRIMARY KEY,
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
   template_id     INTEGER REFERENCES email_templates(id),
   subject         TEXT NOT NULL,
-  scheduled_at    TIMESTAMPTZ NOT NULL,
-  sent_at         TIMESTAMPTZ,
+  scheduled_at    TEXT NOT NULL,
+  sent_at         TEXT,
   status          TEXT NOT NULL DEFAULT 'scheduled',
   recipient_count INTEGER,
-  created_at      TIMESTAMPTZ DEFAULT NOW()
+  audience        TEXT NOT NULL DEFAULT 'newsletter',
+  sent_offset     INTEGER NOT NULL DEFAULT 0,
+  -- Hand-picked recipient list for audience = 'selection'; JSON array or NULL.
+  recipient_ids   TEXT,
+  created_at      TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_campaigns_due
   ON campaigns (status, scheduled_at);
 
-ALTER TABLE signers ADD COLUMN IF NOT EXISTS occupation TEXT DEFAULT '';
+CREATE TABLE IF NOT EXISTS zoom_registrations (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  name              TEXT NOT NULL,
+  email             TEXT NOT NULL UNIQUE,
+  kreisverband      TEXT DEFAULT '',
+  delegierter       INTEGER NOT NULL DEFAULT 0,
+  unsubscribe_token TEXT UNIQUE,
+  created_at        TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
 
-ALTER TABLE signers ADD COLUMN IF NOT EXISTS state TEXT DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_zoom_reg_created
+  ON zoom_registrations (created_at DESC);
 
-CREATE INDEX IF NOT EXISTS idx_signers_state
-  ON signers (state)
-  WHERE verified = TRUE AND state != '';
+CREATE INDEX IF NOT EXISTS idx_zoom_reg_unsub
+  ON zoom_registrations (unsubscribe_token)
+  WHERE unsubscribe_token IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS zoom_event_mailings (
+  kind            TEXT PRIMARY KEY,
+  status          TEXT NOT NULL DEFAULT 'sending',
+  recipient_count INTEGER,
+  sent_at         TEXT,
+  updated_at      TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+CREATE TABLE IF NOT EXISTS app_settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL,
+  updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
 
 CREATE TABLE IF NOT EXISTS kv_state_cache (
   kreisverband  TEXT PRIMARY KEY,
   state         TEXT NOT NULL DEFAULT '',
   source        TEXT NOT NULL DEFAULT 'nominatim',
-  resolved_at   TIMESTAMPTZ DEFAULT NOW()
+  resolved_at   TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
 CREATE TABLE IF NOT EXISTS kv_not_typo (
   canonical     TEXT NOT NULL,
   outlier       TEXT NOT NULL,
-  created_at    TIMESTAMPTZ DEFAULT NOW(),
+  created_at    TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   PRIMARY KEY (canonical, outlier)
 );
 
 CREATE TABLE IF NOT EXISTS occupation_not_typo (
   canonical     TEXT NOT NULL,
   outlier       TEXT NOT NULL,
-  created_at    TIMESTAMPTZ DEFAULT NOW(),
+  created_at    TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   PRIMARY KEY (canonical, outlier)
 );
-
-CREATE TABLE IF NOT EXISTS zoom_registrations (
-  id            SERIAL PRIMARY KEY,
-  name          TEXT NOT NULL,
-  email         TEXT NOT NULL UNIQUE,
-  kreisverband  TEXT DEFAULT '',
-  delegierter   BOOLEAN DEFAULT FALSE,
-  created_at    TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_zoom_reg_created
-  ON zoom_registrations (created_at DESC);
-
-ALTER TABLE zoom_registrations ADD COLUMN IF NOT EXISTS unsubscribe_token TEXT UNIQUE;
-
-CREATE INDEX IF NOT EXISTS idx_zoom_reg_unsub
-  ON zoom_registrations (unsubscribe_token)
-  WHERE unsubscribe_token IS NOT NULL;
-
-ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS audience TEXT NOT NULL DEFAULT 'newsletter';
-
-CREATE TABLE IF NOT EXISTS zoom_event_mailings (
-  kind            TEXT PRIMARY KEY,
-  status          TEXT NOT NULL DEFAULT 'sending',
-  recipient_count INTEGER,
-  sent_at         TIMESTAMPTZ,
-  updated_at      TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS app_settings (
-  key        TEXT PRIMARY KEY,
-  value      TEXT NOT NULL,
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- Track how many emails were sent so a failed campaign can resume mid-list.
-ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS sent_offset INTEGER NOT NULL DEFAULT 0;
-
--- Hand-picked recipient list for audience = 'selection' (NULL for other audiences).
-ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS recipient_ids INTEGER[];

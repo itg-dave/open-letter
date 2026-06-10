@@ -38,7 +38,8 @@ import {
   listCampaigns,
   createCampaign,
   cancelCampaign,
-  claimDueCampaigns,
+  claimCampaignById,
+  getDueCampaignIds,
   markCampaignSent,
   markCampaignFailed,
   incrementCampaignOffset,
@@ -93,7 +94,14 @@ import {
 } from "./email.js";
 import { buildZoomIcs } from "./ics.js";
 import { checkRateLimit } from "./ratelimit.js";
-import { startBackupSchedule } from "./backup.js";
+import { runBackup } from "./backup.js";
+import {
+  initJobs,
+  enqueue as enqueueJob,
+  registerSchedule,
+  startWorker,
+  stopWorker,
+} from "../db/jobs.js";
 import {
   enqueueStateResolution,
   startStateWorker,
@@ -532,24 +540,14 @@ async function sendCampaign(campaign) {
   await markCampaignSent(campaign.id, resumeOffset + sent);
 }
 
-let campaignWorkerRunning = false;
-async function runCampaignWorker() {
-  if (campaignWorkerRunning) return;
-  campaignWorkerRunning = true;
-  try {
-    const campaigns = await claimDueCampaigns();
-    for (const campaign of campaigns) {
-      await sendCampaign(campaign);
-    }
-  } catch (err) {
-    console.error("Campaign worker error:", err);
-  } finally {
-    campaignWorkerRunning = false;
-  }
+// Campaign sending is driven by Honker durable jobs (see the boot section).
+// Each campaign is processed by a `campaigns` queue job; a reconciler re-enqueues
+// any due/failed campaign so sends survive restarts and transient failures.
+async function handleCampaignJob({ campaignId }) {
+  const campaign = await claimCampaignById(campaignId);
+  if (!campaign) return; // already sending/sent, or cancelled (row deleted)
+  await sendCampaign(campaign);
 }
-
-const campaignWorker = setInterval(runCampaignWorker, 60 * 1000);
-campaignWorker.unref?.();
 
 // ---- Zoom event mailings (link 1 day before + ICS, reminder 2 hours before) ----
 
@@ -713,8 +711,7 @@ async function runZoomMailingWorker() {
   }
 }
 
-const zoomMailingWorker = setInterval(runZoomMailingWorker, 60 * 1000);
-zoomMailingWorker.unref?.();
+// runZoomMailingWorker is invoked by the Honker `maintenance` queue (see boot).
 
 const server = Bun.serve({
   port: PORT,
@@ -1664,6 +1661,12 @@ const server = Bun.serve({
             recipientIds,
           });
           if (!campaign) return json({ error: "Template not found" }, 404);
+          // Durable send job, delivered at the scheduled time.
+          enqueueJob(
+            "campaigns",
+            { campaignId: campaign.id },
+            { runAt: Math.floor(scheduledAt.getTime() / 1000), maxAttempts: 5 },
+          );
           return json(campaign, 201);
         });
       },
@@ -2151,7 +2154,32 @@ const server = Bun.serve({
 console.log(
   `Server running on ${server.url} (${isDev ? "development" : "production"})`,
 );
-startBackupSchedule();
+// ---- Honker durable jobs: campaign sends, zoom mailings, hourly backups ----
+async function handleMaintenanceJob({ task }) {
+  if (task === "campaign-reconcile") {
+    const ids = await getDueCampaignIds();
+    for (const id of ids) enqueueJob("campaigns", { campaignId: id }, { maxAttempts: 5 });
+  } else if (task === "zoom") {
+    await runZoomMailingWorker();
+  } else if (task === "backup") {
+    await runBackup();
+  }
+}
+
+try {
+  initJobs();
+  // Recurring schedules (persisted in the encrypted DB; survive restarts).
+  registerSchedule("campaign-reconcile", "maintenance", "@every 30s", { task: "campaign-reconcile" });
+  registerSchedule("zoom-mailings", "maintenance", "@every 60s", { task: "zoom" });
+  registerSchedule("hourly-backup", "maintenance", "0 * * * *", { task: "backup" });
+  startWorker({
+    campaigns: handleCampaignJob,
+    maintenance: handleMaintenanceJob,
+  });
+} catch (err) {
+  console.error("[jobs] init failed:", err);
+}
+
 ensureKvStateCacheTable()
   .then(() => initStateCache())
   .then(() => startStateWorker())
@@ -2162,8 +2190,7 @@ ensureKvStateCacheTable()
 
 function shutdown() {
   console.log("Shutting down...");
-  clearInterval(campaignWorker);
-  clearInterval(zoomMailingWorker);
+  stopWorker();
   close().then(() => process.exit(0));
 }
 process.on("SIGTERM", shutdown);

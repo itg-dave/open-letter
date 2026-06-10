@@ -1,17 +1,9 @@
-import postgres from "postgres";
 import { readFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
+import { db } from "./connection.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-
-const dbUrl = process.env.DATABASE_URL || "";
-const sslMode = new URL(dbUrl).searchParams.get("sslmode") || "";
-const ssl = sslMode.startsWith("disable")
-  ? false
-  : { rejectUnauthorized: false };
-
-const sql = postgres(dbUrl, { ssl });
 
 const templates = [
   {
@@ -120,18 +112,23 @@ const templates = [
 
 try {
   const schema = readFileSync(join(__dirname, "schema.sql"), "utf-8");
-  await sql.unsafe(schema);
+  db.run(schema);
+  const insert = db.query(
+    `INSERT INTO email_templates (slug, name, subject, html_body)
+     VALUES (?, ?, ?, ?) ON CONFLICT (slug) DO NOTHING`,
+  );
   for (const template of templates) {
-    await sql`
-      INSERT INTO email_templates (slug, name, subject, html_body)
-      VALUES (${template.slug}, ${template.name}, ${template.subject}, ${template.htmlBody})
-      ON CONFLICT (slug) DO NOTHING
-    `;
+    insert.run(
+      template.slug,
+      template.name,
+      template.subject,
+      template.htmlBody,
+    );
   }
   console.log("Database schema applied successfully.");
 } catch (err) {
   console.error("Failed to apply database schema:", err.message);
   process.exit(1);
 } finally {
-  await sql.end();
+  db.close();
 }

@@ -7,7 +7,8 @@ Campaign landing page for an open letter by the base of Die Linke demanding caps
 - **Runtime**: [Bun](https://bun.sh) — package manager, bundler, HTTP server (no Vite, no framework)
 - **Frontend**: React 18, vanilla CSS
 - **Backend**: `Bun.serve()` with route handlers
-- **Database**: PostgreSQL 18 via [postgres.js](https://github.com/porsager/postgres)
+- **Database**: SQLite via Bun's built-in `bun:sqlite`, **encrypted at rest with [SQLCipher](https://www.zetetic.net/sqlcipher/)** (loaded through `Database.setCustomSQLite`)
+- **Jobs**: [Honker](https://honker.dev) durable queues + cron scheduler (campaign sends, zoom mailings, backups, state resolution) — persisted inside the same SQLite file
 - **Email**: Resend HTTP API for transactional mail
 
 ## Project Structure
@@ -21,15 +22,19 @@ diaetendeckel/
 ├── Dockerfile                 # Production multi-stage build
 ├── Dockerfile.dev             # Dev/demo build (includes seed + trickle)
 ├── .dockerignore
-├── docker-compose.yml         # Production (optional bundled Postgres)
-├── docker-compose.dev.yml     # Dev/demo (Postgres + seed data + trickle)
+├── docker-compose.yml         # Production (encrypted SQLite on a volume)
+├── docker-compose.dev.yml     # Dev/demo (SQLite + seed data + trickle)
 ├── db/
-│   ├── schema.sql             # Table + indexes
+│   ├── connection.js          # Shared SQLCipher-keyed bun:sqlite connection
+│   ├── schema.sql             # Tables + indexes (SQLite)
 │   ├── setup.js               # Idempotent schema application
-│   └── seed.js                # Dev: 200 demo signers + live trickle
+│   ├── seed.js                # Dev: 200 demo signers + live trickle
+│   ├── jobs.js                # Honker durable queues + scheduler (encrypted DB)
+│   ├── migrate-pg-to-sqlite.js # One-time Postgres → encrypted SQLite migration
+│   └── restore-backup.js      # Restore an encrypted backup into DATABASE_PATH
 ├── server/
 │   ├── index.js               # Bun.serve() — routes + security headers
-│   ├── db.js                  # Parameterized Postgres queries
+│   ├── db.js                  # Parameterized bun:sqlite queries
 │   ├── email.js               # Email templates + Resend transport
 │   └── ratelimit.js           # In-memory sliding window rate limiter
 └── src/
@@ -40,15 +45,20 @@ diaetendeckel/
 
 ## Quick Start (local)
 
-Prerequisites: [Bun](https://bun.sh) installed, PostgreSQL running.
+Prerequisites: [Bun](https://bun.sh) installed, SQLCipher installed
+(`brew install sqlcipher` on macOS, `apt-get install libsqlcipher0` on Debian).
 
 ```bash
 git clone <repo-url> && cd diaetendeckel
 bun install
-cp .env.example .env           # edit DATABASE_URL to match your Postgres
-bun run db:setup               # create table + indexes (idempotent)
+cp .env.example .env           # set DATABASE_ENCRYPTION_KEY (required)
+bun run db:setup               # create tables + indexes (idempotent)
 bun run dev                    # → http://localhost:3000 (HMR enabled)
 ```
+
+The database is encrypted at rest with SQLCipher. `DATABASE_ENCRYPTION_KEY` is
+**required** — the app refuses to start without it. If `libsqlcipher` is not on
+the default path, set `SQLCIPHER_LIB`.
 
 To populate with demo data in a second terminal:
 
@@ -64,13 +74,17 @@ No local Bun or Postgres needed:
 docker compose -f docker-compose.dev.yml up --build
 ```
 
-This starts Postgres 18, creates the schema, seeds 200 verified signers, trickles a new one every 6 seconds, and serves the app at `http://localhost:3000`.
+This creates the encrypted SQLite database, seeds 200 verified signers, trickles a new one every 6 seconds, and serves the app at `http://localhost:3000`.
 
 ## Environment Variables
 
 | Variable           | Required   | Default                 | Description                                                                                                           |
 | ------------------ | ---------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`     | Yes        | —                       | Postgres connection string                                                                                            |
+| `DATABASE_PATH`    | No         | `./data/diaetendeckel.db` | Path to the encrypted SQLite database file                                                                          |
+| `DATABASE_ENCRYPTION_KEY` | Yes | —                       | SQLCipher passphrase. The app fails closed (won't start) without it.                                                 |
+| `SQLCIPHER_LIB`    | No         | platform default        | Path to `libsqlcipher` (`.dylib`/`.so`) loaded via `setCustomSQLite`                                                 |
+| `HONKER_EXTENSION_PATH` | No    | platform default        | Path to the Honker SQLite extension (`libhonker_ext.{dylib,so}`) for durable jobs                                    |
+| `SOURCE_DATABASE_URL` | Migration only | —                | Old Postgres connection string, read by `db:migrate`                                                                |
 | `PORT`             | No         | `3000`                  | Server port                                                                                                           |
 | `BASE_URL`         | No         | `http://localhost:3000` | Public URL (used in verification emails)                                                                              |
 | `NODE_ENV`         | No         | `development`           | `production` enables CSP headers + asset minification                                                                 |
@@ -79,9 +93,10 @@ This starts Postgres 18, creates the schema, seeds 200 verified signers, trickle
 | `ADMIN_JWT_SECRET` | Yes        | —                       | Long random secret for admin session JWTs                                                                             |
 | `RESEND_API_KEY`   | Yes (prod) | —                       | Resend API key used to send transactional email                                                                       |
 | `RESEND_FROM`      | No         | `Gehaltsdeckel Initiative <noreply@gehaltsdeckel.jetzt>` | Verified sender used for outbound email                                                  |
-| `BACKUP_ENCRYPTION_KEY` | No    | —                       | 32-byte hex key for AES-256-CBC backup encryption (64 hex chars). If unset, backups are unencrypted. |
+| `BACKUP_ENCRYPTION_KEY` | No    | `DATABASE_ENCRYPTION_KEY` | Separate SQLCipher key for backup files. Defaults to the live DB key.                                              |
 | `BACKUP_DIR`       | No         | `/app/backups`          | Directory for database backup files                                                                                   |
 | `BACKUP_KEEP`      | No         | `48`                    | Number of hourly backup files to retain                                                                               |
+| `BACKUP_GZIP`      | No         | `true`                  | Gzip the encrypted backup snapshot                                                                                    |
 
 See `.env.example` for a template.
 
@@ -93,6 +108,8 @@ See `.env.example` for a template.
 | `bun run start`    | Start production server                           |
 | `bun run db:setup` | Apply database schema (idempotent)                |
 | `bun run db:seed`  | Seed 200 demo signers + trickle new ones every 6s |
+| `bun run db:migrate` | One-time migrate from Postgres (`SOURCE_DATABASE_URL`) into encrypted SQLite |
+| `bun run db:restore <file\|--latest>` | Restore an encrypted backup into `DATABASE_PATH` |
 
 ## API
 
@@ -142,11 +159,31 @@ Verifies a signature if the token is valid and not expired. Redirects to `/?conf
 
 ## Database
 
-Single table `signers` with columns: `id`, `name`, `email` (unique), `kreisverband`, `newsletter`, `verified`, `verification_token` (unique), `token_expires_at`, `created_at`.
+SQLite, encrypted at rest with SQLCipher. `bun:sqlite` loads `libsqlcipher` via
+`Database.setCustomSQLite()` and applies `PRAGMA key` as the first statement on
+every connection; the app verifies `PRAGMA cipher_version` is active and fails
+closed otherwise. The file, its WAL, and all backups are encrypted.
 
-Four indexes optimized for the main queries: verified listing, recent signers, token lookup (partial), and Kreisverband filter (partial).
+Core table `signers` (`id`, `name`, `email` unique, `kreisverband`, `occupation`,
+`state`, `newsletter`, `show_publicly`, `verified`, token columns, `created_at`),
+plus `email_templates`, `campaigns` (with `audience` + JSON `recipient_ids`),
+`zoom_registrations`, `zoom_event_mailings`, `app_settings`, and the
+KV/state-resolution caches.
 
-Schema creation is idempotent (`IF NOT EXISTS`) — safe to run on every container start.
+Conventions: timestamps are ISO-8601 UTC `TEXT`; booleans are `0/1`. Schema
+creation is idempotent (`IF NOT EXISTS`) — safe to run on every container start.
+
+### Migrating from Postgres (zero data loss)
+
+```bash
+SOURCE_DATABASE_URL=postgres://…  DATABASE_PATH=/app/data/diaetendeckel.db \
+DATABASE_ENCRYPTION_KEY=…  bun run db:migrate
+```
+
+Copies every table preserving primary-key ids, converting booleans, timestamps,
+and the `recipient_ids` array, then prints per-table source vs destination row
+counts and aborts on any mismatch. Run it during a brief maintenance window with
+the app stopped, then start the app pointed at the new file.
 
 ## Email
 
@@ -162,62 +199,71 @@ Schema creation is idempotent (`IF NOT EXISTS`) — safe to run on every contain
 - **Token security**: `crypto.randomUUID()` (128-bit), 24h expiry, cleared after use.
 - **No email exposure**: `/api/signers` never returns email addresses. `/api/sign` returns the same response whether the email exists or not.
 
+## Durable jobs (Honker)
+
+Background work — scheduled **campaign sends**, **zoom event mailings**, and
+**hourly backups** — runs on durable [Honker](https://honker.dev) queues instead
+of in-memory timers. The Honker SQLite extension is loaded into the app's
+SQLCipher-keyed connection and driven via its `honker_*` SQL functions, so job
+rows live inside the **same encrypted database** (encrypted at rest) and survive
+restarts, with automatic retries and dead-lettering.
+
+- Creating a campaign enqueues a `campaigns` job delivered at its scheduled time;
+  a reconciler re-enqueues any due/failed campaign so sends survive restarts.
+- A cron scheduler fires the zoom-mailing check (every 60s) and the hourly backup.
+- The extension binary is **not on npm** — build it from the
+  [Honker repo](https://github.com/russellromney/honker)
+  (`cargo build --release -p honker-extension`) and point `HONKER_EXTENSION_PATH`
+  at the resulting `libhonker_ext.{dylib,so}`. The Docker images build it in a
+  Rust stage automatically.
+
 ## Backups
 
-The app runs hourly `pg_dump` backups to `BACKUP_DIR` (default `/app/backups`), keeping the most recent `BACKUP_KEEP` files (default 48). Backups use PostgreSQL's custom format.
+Hourly backups write a consistent, SQLCipher-encrypted snapshot to `BACKUP_DIR`
+(default `/app/backups`), keeping the most recent `BACKUP_KEEP` files (default
+48). Each snapshot is produced via SQLCipher's `sqlcipher_export()` into an
+ATTACHed keyed file, then gzipped (`.sqlite.gz`). Because the snapshot is itself
+SQLCipher-encrypted, backups are encrypted at rest with no extra step.
 
-### Encryption at rest
+By default backups use `DATABASE_ENCRYPTION_KEY`; set `BACKUP_ENCRYPTION_KEY` to
+use a distinct key. **Store the key securely and separately from the backups** —
+without it, a backup cannot be opened.
 
-Set `BACKUP_ENCRYPTION_KEY` to encrypt backups with AES-256-CBC. Generate a key:
-
-```bash
-openssl rand -hex 32
-```
-
-Encrypted backups are saved with a `.dump.enc` extension. Each file has a random 16-byte IV prepended to the ciphertext.
-
-**Store this key securely and separately from the backups.** Without it, encrypted backups cannot be recovered.
-
-### Decrypting a backup
+### Restoring a backup
 
 ```bash
-# Extract the IV (first 16 bytes) and ciphertext
-dd if=backup.dump.enc bs=16 count=1 of=iv.bin 2>/dev/null
-dd if=backup.dump.enc bs=16 skip=1 of=encrypted.bin 2>/dev/null
+# Restore the most recent backup (app stopped) — moves any existing DB aside
+# to <path>.pre-restore-<timestamp> first, then verifies row counts.
+DATABASE_PATH=/app/data/diaetendeckel.db DATABASE_ENCRYPTION_KEY=… \
+  bun run db:restore --latest
 
-# Decrypt (replace <hex-key> with your 64-char BACKUP_ENCRYPTION_KEY)
-openssl enc -d -aes-256-cbc \
-  -in encrypted.bin \
-  -out backup.dump \
-  -K <hex-key> \
-  -iv "$(xxd -p -c 32 iv.bin)"
-
-# Restore into Postgres
-pg_restore -d <database_url> backup.dump
+# Or a specific file:
+bun run db:restore /app/backups/backup-2026-06-09T12-00-00.sqlite.gz
 ```
+
+The restore re-keys the snapshot to `DATABASE_ENCRYPTION_KEY`, so it works even
+if the backup used a separate `BACKUP_ENCRYPTION_KEY`.
 
 ## Deployment (Dokploy)
 
-### Production with bundled Postgres
+The database is a single encrypted SQLite file on a persistent volume — there is
+no separate database service.
 
-```bash
-docker compose --profile with-db up --build
-```
-
-Set in Dokploy UI or `.env`:
-
-- `DB_PASSWORD` — strong random password
-- `BASE_URL` — public URL (e.g. `https://diaetendeckel.example.de`)
-- `RESEND_API_KEY` — Resend API key with send access
-- `RESEND_FROM` — optional verified sender override
-
-### Production with external Postgres
+### Production
 
 ```bash
 docker compose up --build
 ```
 
-Set `DATABASE_URL` to your existing Postgres connection string. The `db` service is skipped entirely (behind a Docker Compose profile).
+Set in Dokploy UI or `.env`:
+
+- `DATABASE_ENCRYPTION_KEY` — SQLCipher key (required). Generate: `openssl rand -hex 32`
+- `BASE_URL` — public URL (e.g. `https://diaetendeckel.example.de`)
+- `RESEND_API_KEY` — Resend API key with send access
+- `RESEND_FROM` — optional verified sender override
+
+The `data` volume holds `diaetendeckel.db`; the `backups` volume holds the hourly
+encrypted snapshots. Back up the key separately from both.
 
 ### Dev / Demo
 

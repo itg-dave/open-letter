@@ -5,13 +5,32 @@ FROM base AS deps
 COPY package.json bun.lock* ./
 RUN bun install --frozen-lockfile --production
 
+# Build the Honker SQLite loadable extension (libhonker_ext.so) from source.
+FROM rust:1-bookworm AS honker
+ARG HONKER_REF=main
+RUN git clone --depth 1 --branch "${HONKER_REF}" https://github.com/russellromney/honker.git /honker \
+    && cd /honker \
+    && cargo build --release -p honker-extension \
+    && cp "$(find target/release -maxdepth 1 -name 'libhonker_ext.so' | head -1)" /libhonker_ext.so
+
 FROM base AS runner
 WORKDIR /app
 
+# SQLCipher (encryption at rest) loaded by bun:sqlite via setCustomSQLite.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libsqlcipher0 \
+    && ln -sf "$(find /usr/lib -name 'libsqlcipher.so*' | head -1)" /usr/lib/libsqlcipher.so \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=deps /app/node_modules ./node_modules
+COPY --from=honker /libhonker_ext.so /app/vendor/libhonker_ext.so
 COPY . .
 
+RUN mkdir -p /app/data /app/backups
+
 ENV NODE_ENV=development
+ENV DATABASE_PATH=/app/data/diaetendeckel.db
+ENV HONKER_EXTENSION_PATH=/app/vendor/libhonker_ext.so
 EXPOSE 3000
 
 CMD ["sh", "-c", "bun db/setup.js && bun db/seed.js & bun server/index.js"]

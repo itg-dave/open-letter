@@ -1,77 +1,75 @@
-import { mkdir, readdir, unlink } from "node:fs/promises";
+// Encrypted SQLCipher backups.
+//
+// Produces a consistent, SQLCipher-encrypted snapshot of the live database using
+// `sqlcipher_export()` into an ATTACHed, keyed backup file. The backup file is
+// itself encrypted at rest (no separate encryption step needed). Optionally
+// gzips the result. Old backups are pruned to BACKUP_KEEP.
+import { mkdir, readdir, unlink, rename } from "node:fs/promises";
+import { createReadStream, createWriteStream } from "node:fs";
 import { join } from "node:path";
-import { createCipheriv, randomBytes } from "node:crypto";
-import { createWriteStream } from "node:fs";
+import { createGzip } from "node:zlib";
 import { pipeline } from "node:stream/promises";
-import { Readable } from "node:stream";
+import { openEncrypted, DB_PATH } from "../db/connection.js";
 
 const BACKUP_DIR = process.env.BACKUP_DIR || "/app/backups";
 const BACKUP_KEEP = Math.max(1, parseInt(process.env.BACKUP_KEEP || "48", 10));
-const DATABASE_URL = process.env.DATABASE_URL || "";
-const BACKUP_ENCRYPTION_KEY = process.env.BACKUP_ENCRYPTION_KEY || "";
+const BACKUP_GZIP = process.env.BACKUP_GZIP !== "false"; // gzip by default
+// Backups may use a distinct key; defaults to the live DB key.
+const BACKUP_KEY =
+  process.env.BACKUP_ENCRYPTION_KEY || process.env.DATABASE_ENCRYPTION_KEY || "";
 const ONE_HOUR = 60 * 60 * 1000;
 
-async function runBackup() {
+const sqlQuote = (s) => `'${String(s).replace(/'/g, "''")}'`;
+
+// Write a consistent encrypted snapshot to `destPath` (a SQLCipher DB file).
+export async function exportEncrypted(destPath) {
+  const db = openEncrypted(DB_PATH);
+  try {
+    db.run(
+      `ATTACH DATABASE ${sqlQuote(destPath)} AS backup KEY ${sqlQuote(BACKUP_KEY)}`,
+    );
+    try {
+      db.query("SELECT sqlcipher_export('backup')").get();
+    } finally {
+      db.run("DETACH DATABASE backup");
+    }
+  } finally {
+    db.close();
+  }
+}
+
+export async function runBackup() {
   const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const ext = BACKUP_ENCRYPTION_KEY ? ".dump.enc" : ".dump";
-  const file = join(BACKUP_DIR, `backup-${ts}${ext}`);
+  const base = join(BACKUP_DIR, `backup-${ts}.sqlite`);
+  const tmp = `${base}.tmp`;
+  const finalPath = BACKUP_GZIP ? `${base}.gz` : base;
 
   try {
     await mkdir(BACKUP_DIR, { recursive: true });
+    await exportEncrypted(tmp);
 
-    const dbUrl = new URL(DATABASE_URL);
-    const pgArgs = ["pg_dump", "--format=custom"];
-    if (dbUrl.hostname) pgArgs.push("--host", dbUrl.hostname);
-    if (dbUrl.port) pgArgs.push("--port", dbUrl.port);
-    if (dbUrl.username)
-      pgArgs.push("--username", decodeURIComponent(dbUrl.username));
-    const dbName = decodeURIComponent(dbUrl.pathname.replace(/^\//, ""));
-    if (dbName) pgArgs.push(dbName);
-
-    const proc = Bun.spawn(pgArgs, {
-      stdout: "pipe",
-      stderr: "pipe",
-      env: {
-        ...process.env,
-        PGPASSWORD: decodeURIComponent(dbUrl.password || ""),
-      },
-    });
-
-    const stdout = Readable.fromWeb(proc.stdout);
-    const out = createWriteStream(file);
-
-    if (BACKUP_ENCRYPTION_KEY) {
-      const key = Buffer.from(BACKUP_ENCRYPTION_KEY, "hex");
-      const iv = randomBytes(16);
-      const cipher = createCipheriv("aes-256-cbc", key, iv);
-      out.write(iv);
-      await pipeline(stdout, cipher, out);
+    if (BACKUP_GZIP) {
+      await pipeline(createReadStream(tmp), createGzip(), createWriteStream(finalPath));
+      await unlink(tmp);
     } else {
-      await pipeline(stdout, out);
+      await rename(tmp, finalPath);
     }
 
-    const [exitCode, errText] = await Promise.all([
-      proc.exited,
-      new Response(proc.stderr).text(),
-    ]);
-
-    if (exitCode !== 0) {
-      throw new Error(`pg_dump exited ${exitCode}: ${errText.trim()}`);
-    }
-
-    console.log(`[backup] saved ${file}`);
+    console.log(`[backup] saved ${finalPath}`);
     await prune();
   } catch (err) {
     console.error(`[backup] failed: ${err.message}`);
-    try {
-      await unlink(file);
-    } catch {}
+    for (const f of [tmp, finalPath]) {
+      try {
+        await unlink(f);
+      } catch {}
+    }
   }
 }
 
 async function prune() {
   const files = (await readdir(BACKUP_DIR))
-    .filter((f) => f.startsWith("backup-") && (f.endsWith(".dump") || f.endsWith(".dump.enc")))
+    .filter((f) => f.startsWith("backup-") && f.includes(".sqlite"))
     .sort()
     .reverse();
 
@@ -81,22 +79,19 @@ async function prune() {
   }
 }
 
+// Hourly schedule. Kept as a lightweight fallback; the Honker scheduler also
+// drives backups in production (db/jobs.js). Safe to run either way.
 export function startBackupSchedule() {
-  if (!DATABASE_URL) {
-    console.warn("[backup] DATABASE_URL not set — backups disabled");
+  if (!BACKUP_KEY) {
+    console.warn("[backup] no encryption key — backups disabled");
     return;
   }
 
-  // Belt-and-suspenders: the outer .catch() ensures a bug inside runBackup
-  // (or a Bun internal error) can never produce an unhandled rejection that
-  // would crash the server process.
   const safe = () =>
     runBackup().catch((err) => console.error("[backup] unhandled error:", err));
 
-  // First backup 30 s after startup, then every hour
   const initial = setTimeout(safe, 30_000);
   initial.unref?.();
-
   const interval = setInterval(safe, ONE_HOUR);
   interval.unref?.();
 

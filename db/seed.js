@@ -1,6 +1,4 @@
-import postgres from "postgres";
-
-const sql = postgres(process.env.DATABASE_URL);
+import { db, nowIso } from "./connection.js";
 
 const VORNAMEN = [
   "Linnea","Jonas","Mahsa","Kerem","Sebastian","Anna-Lena","Mira","Tobias","Cem","Helena",
@@ -46,23 +44,20 @@ for (let i = 0; i < INITIAL_COUNT; i++) {
   batch.push(makeSigner(minutesAgo));
 }
 
+const insert = db.query(
+  `INSERT INTO signers (name, email, kreisverband, newsletter, verified, created_at)
+   VALUES (?, ?, ?, ?, 1, ?) ON CONFLICT (email) DO NOTHING`,
+);
+
 for (const s of batch) {
-  await sql`
-    INSERT INTO signers (name, email, kreisverband, newsletter, verified, created_at)
-    VALUES (${s.name}, ${s.email}, ${s.kv}, ${Math.random() > 0.3}, TRUE, ${s.createdAt})
-    ON CONFLICT (email) DO NOTHING
-  `;
+  insert.run(s.name, s.email, s.kv, Math.random() > 0.3 ? 1 : 0, s.createdAt.toISOString());
 }
 
 console.log(`Seeded ${INITIAL_COUNT} signers.`);
 console.log(`Trickling new signers every ${TRICKLE_INTERVAL_MS / 1000}s — press Ctrl+C to stop.\n`);
 
-setInterval(async () => {
+setInterval(() => {
   const s = makeSigner(0);
-  await sql`
-    INSERT INTO signers (name, email, kreisverband, newsletter, verified, created_at)
-    VALUES (${s.name}, ${s.email}, ${s.kv}, ${Math.random() > 0.3}, TRUE, NOW())
-    ON CONFLICT (email) DO NOTHING
-  `;
+  insert.run(s.name, s.email, s.kv, Math.random() > 0.3 ? 1 : 0, nowIso());
   console.log(`+ ${s.name}${s.kv ? ` (KV ${s.kv})` : ""}`);
 }, TRICKLE_INTERVAL_MS);

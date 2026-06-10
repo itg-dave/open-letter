@@ -1,17 +1,108 @@
-import postgres from "postgres";
+// Data access layer — bun:sqlite over a SQLCipher-encrypted database.
+//
+// Migrated from postgres.js. Key translation rules applied throughout:
+//   * Timestamps are ISO-8601 UTC TEXT. Bind Dates via `iso()`, compare against
+//     JS-computed cutoffs (`isoAgo`) instead of `NOW() - INTERVAL '…'`.
+//   * Booleans are stored as 0/1; response-facing rows are coerced back to JS
+//     booleans via `boolify`.
+//   * `campaigns.recipient_ids` is a JSON-array TEXT column (Postgres INTEGER[]).
+//   * The Postgres `fuzzystrmatch` search (levenshtein / regexp_split_to_table)
+//     is reimplemented in JS (`fuzzyMatch`), since bun:sqlite has no custom
+//     SQL functions.
+import { db, nowIso, isoAgo } from "../db/connection.js";
 
-const dbUrl = process.env.DATABASE_URL || "";
-const sslMode = new URL(dbUrl).searchParams.get("sslmode") || "";
-const ssl = sslMode.startsWith("disable")
-  ? false
-  : { rejectUnauthorized: false };
+const DAY = 24 * 60 * 60 * 1000;
 
-const sql = postgres(dbUrl, {
-  ssl,
-  max: 10,
-  idle_timeout: 20,
-  connect_timeout: 10,
-});
+// ---- small helpers ---------------------------------------------------------
+
+const B = (v) => (v ? 1 : 0);
+const iso = (v) =>
+  v == null ? null : v instanceof Date ? v.toISOString() : String(v);
+
+function boolify(row, fields) {
+  if (!row) return row;
+  for (const f of fields) if (f in row) row[f] = !!row[f];
+  return row;
+}
+function boolifyAll(rows, fields) {
+  for (const r of rows) boolify(r, fields);
+  return rows;
+}
+
+// Full Levenshtein edit distance (strings here are short — names / KV labels).
+function levenshtein(a, b) {
+  if (a === b) return 0;
+  const m = a.length;
+  const n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  let prev = new Array(n + 1);
+  let curr = new Array(n + 1);
+  for (let j = 0; j <= n; j++) prev[j] = j;
+  for (let i = 1; i <= m; i++) {
+    curr[0] = i;
+    const ca = a.charCodeAt(i - 1);
+    for (let j = 1; j <= n; j++) {
+      const cost = ca === b.charCodeAt(j - 1) ? 0 : 1;
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+    }
+    [prev, curr] = [curr, prev];
+  }
+  return prev[n];
+}
+
+// Mirrors the old SQL fuzzy clause + match_score:
+//   match  -> substring OR per-word name Levenshtein OR whole-KV Levenshtein
+//   score  -> best similarity ratio in [0,1] used for ranking
+function fuzzyMatch(name, kv, q) {
+  const nameLower = (name || "").toLowerCase();
+  const kvLower = (kv || "").toLowerCase();
+  let match = false;
+  let score = 0;
+
+  if (nameLower.includes(q)) {
+    match = true;
+    score = 1;
+  }
+  if (kvLower.includes(q)) {
+    match = true;
+    score = 1;
+  }
+
+  for (const w of nameLower.split(/\s+/)) {
+    if (w.length < 2) continue;
+    const d = levenshtein(w, q);
+    const thr = Math.max(1, Math.round(w.length * 0.4));
+    if (d <= thr) match = true;
+    const ratio = 1 - d / Math.max(w.length, q.length, 1);
+    if (ratio > score) score = ratio;
+  }
+
+  if (kvLower.length >= 3) {
+    const d = levenshtein(kvLower, q);
+    const thr = Math.max(
+      2,
+      Math.round(Math.max(kvLower.length, q.length) * 0.35),
+    );
+    if (d <= thr) match = true;
+    const ratio = 1 - d / Math.max(kvLower.length, q.length, 1);
+    if (ratio > score) score = ratio;
+  }
+
+  return { match, score };
+}
+
+function parseIds(json) {
+  if (!json) return null;
+  try {
+    const arr = JSON.parse(json);
+    return Array.isArray(arr) ? arr : null;
+  } catch {
+    return null;
+  }
+}
+
+// ---- public signers list ---------------------------------------------------
 
 export async function getSigners({
   filter = "alle",
@@ -24,137 +115,89 @@ export async function getSigners({
   offset = Math.max(0, offset);
 
   const searchClean = search.trim().toLowerCase();
-  const searchParam = searchClean ? `%${searchClean}%` : null;
-  const sortDir = sort === "asc" ? sql`ASC` : sql`DESC`;
+  const sortDir = sort === "asc" ? "ASC" : "DESC";
 
-  const filterClause =
-    filter === "heute"
-      ? sql`AND s.created_at > NOW() - INTERVAL '24 hours'`
-      : filter === "kv"
-        ? sql`AND s.kreisverband != ''`
-        : sql``;
+  const conds = ["s.verified = 1", "s.show_publicly = 1"];
+  const params = [];
+  if (filter === "heute") {
+    conds.push("s.created_at > ?");
+    params.push(isoAgo(DAY));
+  } else if (filter === "kv") {
+    conds.push("s.kreisverband != ''");
+  }
+  const whereSql = conds.join(" AND ");
 
   if (!searchClean) {
-    const [{ total }] = await sql`
-      SELECT COUNT(*)::int AS total
-      FROM signers s
-      WHERE s.verified = TRUE AND s.show_publicly = TRUE
-      ${filterClause}
-    `;
-    const signers = await sql`
-      SELECT s.id, s.name, s.kreisverband, s.occupation, s.state, s.created_at
-      FROM signers s
-      WHERE s.verified = TRUE AND s.show_publicly = TRUE
-      ${filterClause}
-      ORDER BY s.created_at ${sortDir}
-      LIMIT ${limit} OFFSET ${offset}
-    `;
+    const { total } = db
+      .query(`SELECT COUNT(*) AS total FROM signers s WHERE ${whereSql}`)
+      .get(...params);
+    const signers = db
+      .query(
+        `SELECT s.id, s.name, s.kreisverband, s.occupation, s.state, s.created_at
+         FROM signers s WHERE ${whereSql}
+         ORDER BY s.created_at ${sortDir} LIMIT ? OFFSET ?`,
+      )
+      .all(...params, limit, offset);
     return { signers, total };
   }
 
-  // Fuzzy search: LIKE for exact substring + per-word Levenshtein for typo tolerance.
-  // A name word matches if edit distance <= ~40% of its length (min 1).
-  const fuzzyClause = sql`
-    AND (
-      LOWER(s.name) LIKE ${searchParam}
-      OR LOWER(s.kreisverband) LIKE ${searchParam}
-      OR EXISTS (
-        SELECT 1 FROM regexp_split_to_table(LOWER(s.name), '\s+') AS w
-        WHERE LENGTH(w) >= 2
-          AND levenshtein_less_equal(w, ${searchClean}, GREATEST(1, ROUND(LENGTH(w) * 0.4)::int))
-              <= GREATEST(1, ROUND(LENGTH(w) * 0.4)::int)
-      )
-      OR (LENGTH(s.kreisverband) >= 3
-          AND levenshtein_less_equal(
-                LOWER(s.kreisverband), ${searchClean},
-                GREATEST(2, ROUND(GREATEST(LENGTH(s.kreisverband), ${searchClean.length}) * 0.35)::int)
-              ) <= GREATEST(2, ROUND(GREATEST(LENGTH(s.kreisverband), ${searchClean.length}) * 0.35)::int)
-      )
+  // Fuzzy search in JS over the candidate set.
+  const rows = db
+    .query(
+      `SELECT s.id, s.name, s.kreisverband, s.occupation, s.state, s.created_at
+       FROM signers s WHERE ${whereSql}`,
     )
-  `;
+    .all(...params);
 
-  const [{ total }] = await sql`
-    SELECT COUNT(*)::int AS total
-    FROM signers s
-    WHERE s.verified = TRUE AND s.show_publicly = TRUE
-    ${filterClause}
-    ${fuzzyClause}
-  `;
+  const scored = [];
+  for (const r of rows) {
+    const { match, score } = fuzzyMatch(r.name, r.kreisverband, searchClean);
+    if (match) scored.push({ r, score });
+  }
+  scored.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return sortDir === "DESC"
+      ? String(b.r.created_at).localeCompare(String(a.r.created_at))
+      : String(a.r.created_at).localeCompare(String(b.r.created_at));
+  });
 
-  const signers = await sql`
-    SELECT s.id, s.name, s.kreisverband, s.occupation, s.state, s.created_at,
-      GREATEST(
-        CASE WHEN LOWER(s.name) LIKE ${searchParam} THEN 1.0 ELSE 0.0 END,
-        CASE WHEN LOWER(s.kreisverband) LIKE ${searchParam} THEN 1.0 ELSE 0.0 END,
-        COALESCE((
-          SELECT MAX(1.0 - levenshtein(w, ${searchClean})::float
-                         / GREATEST(LENGTH(w), ${searchClean.length}, 1))
-          FROM regexp_split_to_table(LOWER(s.name), '\s+') AS w
-          WHERE LENGTH(w) >= 2
-        ), 0.0),
-        CASE WHEN LENGTH(s.kreisverband) >= 3
-             THEN 1.0 - levenshtein(LOWER(s.kreisverband), ${searchClean})::float
-                      / GREATEST(LENGTH(s.kreisverband), ${searchClean.length}, 1)
-             ELSE 0.0 END
-      ) AS match_score
-    FROM signers s
-    WHERE s.verified = TRUE AND s.show_publicly = TRUE
-    ${filterClause}
-    ${fuzzyClause}
-    ORDER BY match_score DESC, s.created_at ${sortDir}
-    LIMIT ${limit} OFFSET ${offset}
-  `;
-
+  const total = scored.length;
+  const signers = scored.slice(offset, offset + limit).map((x) => x.r);
   return { signers, total };
 }
 
-// Build the shared WHERE fragment for the admin newsletter-signer list.
-// Base: verified newsletter opt-ins (NOT filtered by show_publicly — admin sees all).
-function newsletterSignerWhere({
-  search = "",
+// ---- admin newsletter-signer list ------------------------------------------
+
+function newsletterBase({
   state = "",
   kv = "",
   dateFrom = null,
   dateTo = null,
 }) {
-  const searchClean = search.trim().toLowerCase();
-  const searchParam = searchClean ? `%${searchClean}%` : null;
+  const conds = ["s.verified = 1", "s.newsletter = 1"];
+  const params = [];
+  if (state) {
+    conds.push("s.state = ?");
+    params.push(state);
+  }
+  if (kv) {
+    conds.push("s.kreisverband = ?");
+    params.push(kv);
+  }
+  if (dateFrom) {
+    conds.push("s.created_at >= ?");
+    params.push(iso(dateFrom));
+  }
+  if (dateTo) {
+    conds.push("s.created_at <= ?");
+    params.push(iso(dateTo));
+  }
+  return { whereSql: conds.join(" AND "), params };
+}
 
-  const searchClause = searchClean
-    ? sql`
-      AND (
-        LOWER(s.name) LIKE ${searchParam}
-        OR LOWER(s.email) LIKE ${searchParam}
-        OR LOWER(s.kreisverband) LIKE ${searchParam}
-        OR EXISTS (
-          SELECT 1 FROM regexp_split_to_table(LOWER(s.name), '\s+') AS w
-          WHERE LENGTH(w) >= 2
-            AND levenshtein_less_equal(w, ${searchClean}, GREATEST(1, ROUND(LENGTH(w) * 0.4)::int))
-                <= GREATEST(1, ROUND(LENGTH(w) * 0.4)::int)
-        )
-        OR (LENGTH(s.kreisverband) >= 3
-            AND levenshtein_less_equal(
-                  LOWER(s.kreisverband), ${searchClean},
-                  GREATEST(2, ROUND(GREATEST(LENGTH(s.kreisverband), ${searchClean.length}) * 0.35)::int)
-                ) <= GREATEST(2, ROUND(GREATEST(LENGTH(s.kreisverband), ${searchClean.length}) * 0.35)::int)
-        )
-      )
-    `
-    : sql``;
-
-  const stateClause = state ? sql`AND s.state = ${state}` : sql``;
-  const kvClause = kv ? sql`AND s.kreisverband = ${kv}` : sql``;
-  const fromClause = dateFrom ? sql`AND s.created_at >= ${dateFrom}` : sql``;
-  const toClause = dateTo ? sql`AND s.created_at <= ${dateTo}` : sql``;
-
-  return sql`
-    s.verified = TRUE AND s.newsletter = TRUE
-    ${searchClause}
-    ${stateClause}
-    ${kvClause}
-    ${fromClause}
-    ${toClause}
-  `;
+function matchesAdminSearch(row, q) {
+  if ((row.email || "").toLowerCase().includes(q)) return true;
+  return fuzzyMatch(row.name, row.kreisverband, q).match;
 }
 
 export async function listNewsletterSigners({
@@ -169,20 +212,34 @@ export async function listNewsletterSigners({
 }) {
   limit = Math.min(Math.max(1, limit), 100);
   offset = Math.max(0, offset);
-  const sortDir = sort === "asc" ? sql`ASC` : sql`DESC`;
-  const where = newsletterSignerWhere({ search, state, kv, dateFrom, dateTo });
+  const sortDir = sort === "asc" ? "ASC" : "DESC";
+  const searchClean = search.trim().toLowerCase();
+  const { whereSql, params } = newsletterBase({ state, kv, dateFrom, dateTo });
+  const cols =
+    "s.id, s.name, s.email, s.kreisverband, s.occupation, s.state, s.created_at";
 
-  const [{ total }] = await sql`
-    SELECT COUNT(*)::int AS total FROM signers s WHERE ${where}
-  `;
-  const signers = await sql`
-    SELECT s.id, s.name, s.email, s.kreisverband, s.occupation, s.state, s.created_at
-    FROM signers s
-    WHERE ${where}
-    ORDER BY s.created_at ${sortDir}
-    LIMIT ${limit} OFFSET ${offset}
-  `;
-  return { signers, total };
+  if (!searchClean) {
+    const { total } = db
+      .query(`SELECT COUNT(*) AS total FROM signers s WHERE ${whereSql}`)
+      .get(...params);
+    const signers = db
+      .query(
+        `SELECT ${cols} FROM signers s WHERE ${whereSql}
+         ORDER BY s.created_at ${sortDir} LIMIT ? OFFSET ?`,
+      )
+      .all(...params, limit, offset);
+    return { signers, total };
+  }
+
+  const rows = db
+    .query(
+      `SELECT ${cols} FROM signers s WHERE ${whereSql}
+       ORDER BY s.created_at ${sortDir}`,
+    )
+    .all(...params);
+  const filtered = rows.filter((r) => matchesAdminSearch(r, searchClean));
+  const total = filtered.length;
+  return { signers: filtered.slice(offset, offset + limit), total };
 }
 
 export async function listNewsletterSignerIds({
@@ -193,61 +250,70 @@ export async function listNewsletterSignerIds({
   dateTo = null,
   cap = 20000,
 } = {}) {
-  const where = newsletterSignerWhere({ search, state, kv, dateFrom, dateTo });
-  const rows = await sql`
-    SELECT s.id FROM signers s
-    WHERE ${where}
-    ORDER BY s.created_at DESC
-    LIMIT ${cap}
-  `;
-  return rows.map((r) => r.id);
+  const searchClean = search.trim().toLowerCase();
+  const { whereSql, params } = newsletterBase({ state, kv, dateFrom, dateTo });
+  let rows = db
+    .query(
+      `SELECT s.id, s.name, s.email, s.kreisverband FROM signers s
+       WHERE ${whereSql} ORDER BY s.created_at DESC`,
+    )
+    .all(...params);
+  if (searchClean)
+    rows = rows.filter((r) => matchesAdminSearch(r, searchClean));
+  return rows.slice(0, cap).map((r) => r.id);
 }
 
 export async function getNewsletterSignerFilters() {
-  const states = await sql`
-    SELECT state, COUNT(*)::int AS count
-    FROM signers
-    WHERE verified = TRUE AND newsletter = TRUE AND state != ''
-    GROUP BY state
-    ORDER BY count DESC, state ASC
-  `;
-  const kvs = await sql`
-    SELECT kreisverband, COUNT(*)::int AS count
-    FROM signers
-    WHERE verified = TRUE AND newsletter = TRUE AND kreisverband != ''
-    GROUP BY kreisverband
-    ORDER BY count DESC, kreisverband ASC
-  `;
+  const states = db
+    .query(
+      `SELECT state, COUNT(*) AS count FROM signers
+       WHERE verified = 1 AND newsletter = 1 AND state != ''
+       GROUP BY state ORDER BY count DESC, state ASC`,
+    )
+    .all();
+  const kvs = db
+    .query(
+      `SELECT kreisverband, COUNT(*) AS count FROM signers
+       WHERE verified = 1 AND newsletter = 1 AND kreisverband != ''
+       GROUP BY kreisverband ORDER BY count DESC, kreisverband ASC`,
+    )
+    .all();
   return { states, kvs };
 }
 
+// ---- stats -----------------------------------------------------------------
+
 export async function getStats() {
-  const [row] = await sql`
-    SELECT
-      COUNT(*) FILTER (WHERE verified)::int AS total,
-      COUNT(*) FILTER (WHERE verified AND created_at > NOW() - INTERVAL '24 hours')::int AS today,
-      COUNT(*) FILTER (WHERE verified AND created_at > NOW() - INTERVAL '7 days')::int AS week,
-      COUNT(DISTINCT kreisverband) FILTER (WHERE verified AND kreisverband != '')::int AS "kvCount"
-    FROM signers
-  `;
-  return row;
+  return db
+    .query(
+      `SELECT
+        COUNT(*) FILTER (WHERE verified) AS total,
+        COUNT(*) FILTER (WHERE verified AND created_at > ?) AS today,
+        COUNT(*) FILTER (WHERE verified AND created_at > ?) AS week,
+        COUNT(DISTINCT kreisverband) FILTER (WHERE verified AND kreisverband != '') AS "kvCount"
+      FROM signers`,
+    )
+    .get(isoAgo(DAY), isoAgo(7 * DAY));
 }
 
 export async function getNewsletterStats() {
-  const [row] = await sql`
-    SELECT
-      COUNT(*) FILTER (WHERE verified)::int AS "signerCount",
-      COUNT(*) FILTER (WHERE verified AND newsletter)::int AS "subscriberCount",
-      COUNT(*) FILTER (
-        WHERE verified AND newsletter
-          AND NOT EXISTS (
-            SELECT 1 FROM zoom_registrations z WHERE z.email = signers.email
-          )
-      )::int AS "newsletterNotZoomCount"
-    FROM signers
-  `;
-  return row;
+  return db
+    .query(
+      `SELECT
+        COUNT(*) FILTER (WHERE verified) AS "signerCount",
+        COUNT(*) FILTER (WHERE verified AND newsletter) AS "subscriberCount",
+        COUNT(*) FILTER (
+          WHERE verified AND newsletter
+            AND NOT EXISTS (
+              SELECT 1 FROM zoom_registrations z WHERE z.email = signers.email
+            )
+        ) AS "newsletterNotZoomCount"
+      FROM signers`,
+    )
+    .get();
 }
+
+// ---- signers: insert / verify / delete -------------------------------------
 
 export async function insertSigner({
   name,
@@ -259,160 +325,231 @@ export async function insertSigner({
   token,
   expiresAt,
 }) {
-  const result = await sql`
-    INSERT INTO signers (name, email, kreisverband, occupation, newsletter, show_publicly, verification_token, token_expires_at)
-    VALUES (${name}, ${email}, ${kv}, ${occupation || ""}, ${newsletter}, ${showPublicly}, ${token}, ${expiresAt})
-    ON CONFLICT (email) DO UPDATE
-      SET name = EXCLUDED.name,
-          kreisverband = EXCLUDED.kreisverband,
-          occupation = EXCLUDED.occupation,
-          newsletter = EXCLUDED.newsletter,
-          show_publicly = EXCLUDED.show_publicly,
-          verification_token = EXCLUDED.verification_token,
-          token_expires_at = EXCLUDED.token_expires_at
-      WHERE signers.verified = FALSE
-    RETURNING id, verified
-  `;
-  if (result.length === 0) {
-    return { ok: false, alreadyVerified: true };
-  }
-  return { ok: true, alreadyVerified: result[0].verified };
+  const row = db
+    .query(
+      `INSERT INTO signers
+         (name, email, kreisverband, occupation, newsletter, show_publicly, verification_token, token_expires_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (email) DO UPDATE
+         SET name = excluded.name,
+             kreisverband = excluded.kreisverband,
+             occupation = excluded.occupation,
+             newsletter = excluded.newsletter,
+             show_publicly = excluded.show_publicly,
+             verification_token = excluded.verification_token,
+             token_expires_at = excluded.token_expires_at
+         WHERE signers.verified = 0
+       RETURNING id, verified`,
+    )
+    .get(
+      name,
+      email,
+      kv,
+      occupation || "",
+      B(newsletter),
+      B(showPublicly),
+      token,
+      iso(expiresAt),
+    );
+  if (!row) return { ok: false, alreadyVerified: true };
+  return { ok: true, alreadyVerified: !!row.verified };
 }
 
+export async function getVerifiedSignerName(email) {
+  const row = db
+    .query(`SELECT name FROM signers WHERE email = ? AND verified = 1`)
+    .get(email);
+  return row ? row.name : null;
+}
+
+export async function refreshVerificationToken(email, token, expiresAt) {
+  const row = db
+    .query(
+      `UPDATE signers SET verification_token = ?, token_expires_at = ?
+       WHERE email = ? AND verified = 0 RETURNING name`,
+    )
+    .get(token, iso(expiresAt), email);
+  return row ? row.name : null;
+}
+
+export async function confirmSigner(token) {
+  const row = db
+    .query(
+      `UPDATE signers
+       SET verified = 1, verification_token = NULL, token_expires_at = NULL
+       WHERE verification_token = ? AND verified = 0 AND token_expires_at > ?
+       RETURNING id, kreisverband`,
+    )
+    .get(token, nowIso());
+  if (!row) return null;
+  return { id: row.id, kreisverband: row.kreisverband };
+}
+
+export async function createDeletionToken(email, token, expiresAt) {
+  const row = db
+    .query(
+      `UPDATE signers SET deletion_token = ?, deletion_token_expires_at = ?
+       WHERE email = ? RETURNING id`,
+    )
+    .get(token, iso(expiresAt), email);
+  return Boolean(row);
+}
+
+export async function deleteSigner(token) {
+  const row = db
+    .query(
+      `DELETE FROM signers
+       WHERE deletion_token = ? AND deletion_token_expires_at > ? RETURNING id`,
+    )
+    .get(token, nowIso());
+  return Boolean(row);
+}
+
+// ---- zoom registrations ----------------------------------------------------
+
 export async function getSignerForZoomInvite(token) {
-  const [signer] = await sql`
-    SELECT id, name, email, kreisverband
-    FROM signers
-    WHERE unsubscribe_token = ${token}
-      AND verified = TRUE
-  `;
-  return signer || null;
+  return (
+    db
+      .query(
+        `SELECT id, name, email, kreisverband FROM signers
+         WHERE unsubscribe_token = ? AND verified = 1`,
+      )
+      .get(token) || null
+  );
 }
 
 export async function insertZoomRegistration({ name, email, kv, delegierter }) {
-  const result = await sql`
-    INSERT INTO zoom_registrations (name, email, kreisverband, delegierter)
-    VALUES (${name}, ${email}, ${kv || ""}, ${Boolean(delegierter)})
-    ON CONFLICT (email) DO UPDATE
-      SET name = EXCLUDED.name,
-          kreisverband = EXCLUDED.kreisverband,
-          delegierter = EXCLUDED.delegierter
-    RETURNING id
-  `;
-  return { ok: true, id: result[0].id };
+  const row = db
+    .query(
+      `INSERT INTO zoom_registrations (name, email, kreisverband, delegierter)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT (email) DO UPDATE
+         SET name = excluded.name,
+             kreisverband = excluded.kreisverband,
+             delegierter = excluded.delegierter
+       RETURNING id`,
+    )
+    .get(name, email, kv || "", B(delegierter));
+  return { ok: true, id: row.id };
 }
 
 export async function getZoomRegistrationCount() {
-  const [row] = await sql`
-    SELECT COUNT(*)::int AS count FROM zoom_registrations
-  `;
-  return row;
+  return db.query(`SELECT COUNT(*) AS count FROM zoom_registrations`).get();
 }
 
 export async function listZoomRegistrations() {
-  return await sql`
-    SELECT name, email, kreisverband, delegierter, created_at
-    FROM zoom_registrations
-    ORDER BY created_at DESC
-  `;
+  return boolifyAll(
+    db
+      .query(
+        `SELECT name, email, kreisverband, delegierter, created_at
+         FROM zoom_registrations ORDER BY created_at DESC`,
+      )
+      .all(),
+    ["delegierter"],
+  );
 }
 
 export async function getZoomCounts() {
-  const [row] = await sql`
-    SELECT
-      COUNT(*)::int AS "zoomCount",
-      COUNT(*) FILTER (WHERE delegierter)::int AS "zoomDelegateCount"
-    FROM zoom_registrations
-  `;
-  return row;
+  return db
+    .query(
+      `SELECT COUNT(*) AS "zoomCount",
+              COUNT(*) FILTER (WHERE delegierter) AS "zoomDelegateCount"
+       FROM zoom_registrations`,
+    )
+    .get();
 }
 
 export async function getZoomRecipients({ delegatesOnly = false } = {}) {
   if (delegatesOnly) {
-    return await sql`
-      SELECT id, name, email, unsubscribe_token
-      FROM zoom_registrations
-      WHERE delegierter = TRUE
-      ORDER BY created_at ASC
-    `;
+    return db
+      .query(
+        `SELECT id, name, email, unsubscribe_token FROM zoom_registrations
+         WHERE delegierter = 1 ORDER BY created_at ASC`,
+      )
+      .all();
   }
-  return await sql`
-    SELECT id, name, email, unsubscribe_token
-    FROM zoom_registrations
-    ORDER BY created_at ASC
-  `;
+  return db
+    .query(
+      `SELECT id, name, email, unsubscribe_token FROM zoom_registrations
+       ORDER BY created_at ASC`,
+    )
+    .all();
 }
 
 export async function refreshZoomUnsubscribeToken(id) {
   const token = crypto.randomUUID();
-  const [row] = await sql`
-    UPDATE zoom_registrations
-    SET unsubscribe_token = ${token}
-    WHERE id = ${id}
-    RETURNING unsubscribe_token
-  `;
+  const row = db
+    .query(
+      `UPDATE zoom_registrations SET unsubscribe_token = ?
+       WHERE id = ? RETURNING unsubscribe_token`,
+    )
+    .get(token, id);
   return row?.unsubscribe_token || token;
 }
 
 export async function deleteZoomRegistrationByUnsubscribeToken(token) {
-  const result = await sql`
-    DELETE FROM zoom_registrations
-    WHERE unsubscribe_token = ${token}
-    RETURNING id
-  `;
-  return result.length > 0;
+  const row = db
+    .query(
+      `DELETE FROM zoom_registrations WHERE unsubscribe_token = ? RETURNING id`,
+    )
+    .get(token);
+  return Boolean(row);
 }
 
 export async function getZoomRegistrationByEmail(email) {
-  const [row] = await sql`
-    SELECT id, delegierter, unsubscribe_token
-    FROM zoom_registrations
-    WHERE email = ${email}
-  `;
-  return row || null;
+  const row = db
+    .query(
+      `SELECT id, delegierter, unsubscribe_token FROM zoom_registrations
+       WHERE email = ?`,
+    )
+    .get(email);
+  return boolify(row || null, ["delegierter"]);
 }
 
-// Race-safe claim: returns the row only if newly inserted or previously failed
-// (allows retry on failure, prevents double-send while 'sending' or after 'sent').
+// Race-safe claim: returns true only if newly inserted or previously failed.
 export async function claimZoomMailing(kind) {
-  const result = await sql`
-    INSERT INTO zoom_event_mailings (kind, status, updated_at)
-    VALUES (${kind}, 'sending', NOW())
-    ON CONFLICT (kind) DO UPDATE
-      SET status = 'sending', updated_at = NOW()
-      WHERE zoom_event_mailings.status = 'failed'
-    RETURNING kind
-  `;
-  return result.length > 0;
+  const row = db
+    .query(
+      `INSERT INTO zoom_event_mailings (kind, status, updated_at)
+       VALUES (?, 'sending', ?)
+       ON CONFLICT (kind) DO UPDATE
+         SET status = 'sending', updated_at = ?
+         WHERE zoom_event_mailings.status = 'failed'
+       RETURNING kind`,
+    )
+    .get(kind, nowIso(), nowIso());
+  return Boolean(row);
 }
 
 export async function markZoomMailing(kind, status, count = null) {
-  await sql`
-    UPDATE zoom_event_mailings
-    SET status = ${status},
-        recipient_count = ${count},
-        sent_at = ${status === "sent" ? sql`NOW()` : sql`sent_at`},
-        updated_at = NOW()
-    WHERE kind = ${kind}
-  `;
+  const setSent = status === "sent" ? "sent_at = ?, " : "";
+  const params = [status, count];
+  if (status === "sent") params.push(nowIso());
+  params.push(nowIso(), kind);
+  db.query(
+    `UPDATE zoom_event_mailings
+     SET status = ?, recipient_count = ?, ${setSent}updated_at = ?
+     WHERE kind = ?`,
+  ).run(...params);
 }
 
 export async function listZoomMailings() {
-  return await sql`
-    SELECT kind, status, recipient_count, sent_at, updated_at
-    FROM zoom_event_mailings
-    ORDER BY kind ASC
-  `;
+  return db
+    .query(
+      `SELECT kind, status, recipient_count, sent_at, updated_at
+       FROM zoom_event_mailings ORDER BY kind ASC`,
+    )
+    .all();
 }
 
 export async function resetZoomMailings() {
-  await sql`DELETE FROM zoom_event_mailings`;
+  db.query(`DELETE FROM zoom_event_mailings`).run();
 }
 
 export async function getZoomSettings() {
-  const rows = await sql`
-    SELECT key, value FROM app_settings WHERE key LIKE 'zoom_%'
-  `;
+  const rows = db
+    .query(`SELECT key, value FROM app_settings WHERE key LIKE 'zoom_%'`)
+    .all();
   const out = {};
   for (const row of rows) out[row.key] = row.value;
   return out;
@@ -421,99 +558,57 @@ export async function getZoomSettings() {
 export async function setZoomSettings(partial) {
   const entries = Object.entries(partial).filter(([, v]) => v != null);
   for (const [key, value] of entries) {
-    await sql`
-      INSERT INTO app_settings (key, value, updated_at)
-      VALUES (${key}, ${String(value)}, NOW())
-      ON CONFLICT (key) DO UPDATE
-        SET value = EXCLUDED.value, updated_at = NOW()
-    `;
+    db.query(
+      `INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = ?`,
+    ).run(key, String(value), nowIso(), nowIso());
   }
 }
 
-export async function getVerifiedSignerName(email) {
-  const result = await sql`
-    SELECT name FROM signers WHERE email = ${email} AND verified = TRUE
-  `;
-  return result.length > 0 ? result[0].name : null;
-}
+// ---- email templates -------------------------------------------------------
 
-export async function refreshVerificationToken(email, token, expiresAt) {
-  const result = await sql`
-    UPDATE signers
-    SET verification_token = ${token}, token_expires_at = ${expiresAt}
-    WHERE email = ${email} AND verified = FALSE
-    RETURNING name
-  `;
-  if (result.length === 0) return null; // not found or already verified
-  return result[0].name;
-}
-
-export async function confirmSigner(token) {
-  const result = await sql`
-    UPDATE signers
-    SET verified = TRUE, verification_token = NULL, token_expires_at = NULL
-    WHERE verification_token = ${token}
-      AND verified = FALSE
-      AND token_expires_at > NOW()
-    RETURNING id, kreisverband
-  `;
-  if (result.length === 0) return null;
-  return { id: result[0].id, kreisverband: result[0].kreisverband };
-}
-
-export async function createDeletionToken(email, token, expiresAt) {
-  const result = await sql`
-    UPDATE signers
-    SET deletion_token = ${token}, deletion_token_expires_at = ${expiresAt}
-    WHERE email = ${email}
-    RETURNING id
-  `;
-  return result.length > 0;
-}
-
-export async function deleteSigner(token) {
-  const result = await sql`
-    DELETE FROM signers
-    WHERE deletion_token = ${token}
-      AND deletion_token_expires_at > NOW()
-    RETURNING id
-  `;
-  return result.length > 0;
-}
+const SYSTEM_SLUGS_SQL =
+  "slug IN ('verification', 'deletion', 'open-letter-update')";
 
 export async function listEmailTemplates() {
-  return await sql`
-    SELECT id, slug, name, subject, updated_at,
-           slug IN ('verification', 'deletion', 'open-letter-update') AS system
-    FROM email_templates
-    ORDER BY system DESC, updated_at DESC, name ASC
-  `;
+  return boolifyAll(
+    db
+      .query(
+        `SELECT id, slug, name, subject, updated_at, ${SYSTEM_SLUGS_SQL} AS system
+         FROM email_templates
+         ORDER BY system DESC, updated_at DESC, name ASC`,
+      )
+      .all(),
+    ["system"],
+  );
 }
 
 export async function getEmailTemplate(id) {
-  const [template] = await sql`
-    SELECT id, slug, name, subject, html_body, updated_at,
-           slug IN ('verification', 'deletion', 'open-letter-update') AS system
-    FROM email_templates
-    WHERE id = ${id}
-  `;
-  return template || null;
+  const row = db
+    .query(
+      `SELECT id, slug, name, subject, html_body, updated_at, ${SYSTEM_SLUGS_SQL} AS system
+       FROM email_templates WHERE id = ?`,
+    )
+    .get(id);
+  return boolify(row || null, ["system"]);
 }
 
 export async function getEmailTemplateBySlug(slug) {
-  const [template] = await sql`
-    SELECT id, slug, name, subject, html_body, updated_at
-    FROM email_templates
-    WHERE slug = ${slug}
-  `;
-  return template || null;
+  return (
+    db
+      .query(
+        `SELECT id, slug, name, subject, html_body, updated_at
+         FROM email_templates WHERE slug = ?`,
+      )
+      .get(slug) || null
+  );
 }
 
 export async function createEmailTemplate({ name, subject, htmlBody }) {
   const slugBase = name
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[̀-ͯ]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 48);
@@ -522,45 +617,51 @@ export async function createEmailTemplate({ name, subject, htmlBody }) {
     ? `newsletter-${slugBase || "template"}`
     : slugBase || "newsletter";
   const slug = `${safeSlugBase}-${crypto.randomUUID().slice(0, 8)}`;
-  const [template] = await sql`
-    INSERT INTO email_templates (slug, name, subject, html_body)
-    VALUES (${slug}, ${name}, ${subject}, ${htmlBody})
-    RETURNING id, slug, name, subject, html_body, updated_at,
-              FALSE AS system
-  `;
-  return template;
+  const row = db
+    .query(
+      `INSERT INTO email_templates (slug, name, subject, html_body)
+       VALUES (?, ?, ?, ?)
+       RETURNING id, slug, name, subject, html_body, updated_at, 0 AS system`,
+    )
+    .get(slug, name, subject, htmlBody);
+  return boolify(row, ["system"]);
 }
 
 export async function updateEmailTemplate(id, { subject, htmlBody }) {
-  const [template] = await sql`
-    UPDATE email_templates
-    SET subject = ${subject}, html_body = ${htmlBody}, updated_at = NOW()
-    WHERE id = ${id}
-    RETURNING id, slug, name, subject, html_body, updated_at,
-              slug IN ('verification', 'deletion', 'open-letter-update') AS system
-  `;
-  return template || null;
+  const row = db
+    .query(
+      `UPDATE email_templates SET subject = ?, html_body = ?, updated_at = ?
+       WHERE id = ?
+       RETURNING id, slug, name, subject, html_body, updated_at, ${SYSTEM_SLUGS_SQL} AS system`,
+    )
+    .get(subject, htmlBody, nowIso(), id);
+  return boolify(row || null, ["system"]);
 }
 
 export async function deleteEmailTemplate(id) {
-  const [template] = await sql`
-    DELETE FROM email_templates
-    WHERE id = ${id}
-      AND slug NOT IN ('verification', 'deletion', 'open-letter-update')
-    RETURNING id
-  `;
-  return Boolean(template);
+  const row = db
+    .query(
+      `DELETE FROM email_templates
+       WHERE id = ? AND slug NOT IN ('verification', 'deletion', 'open-letter-update')
+       RETURNING id`,
+    )
+    .get(id);
+  return Boolean(row);
 }
 
+// ---- campaigns -------------------------------------------------------------
+
 export async function listCampaigns() {
-  return await sql`
-    SELECT c.id, c.template_id, t.name AS template_name, c.subject, c.scheduled_at,
-           c.sent_at, c.status, c.recipient_count, c.sent_offset, c.audience,
-           COALESCE(cardinality(c.recipient_ids), 0) AS selection_count, c.created_at
-    FROM campaigns c
-    LEFT JOIN email_templates t ON t.id = c.template_id
-    ORDER BY c.scheduled_at DESC, c.created_at DESC
-  `;
+  return db
+    .query(
+      `SELECT c.id, c.template_id, t.name AS template_name, c.subject, c.scheduled_at,
+              c.sent_at, c.status, c.recipient_count, c.sent_offset, c.audience,
+              COALESCE(json_array_length(c.recipient_ids), 0) AS selection_count, c.created_at
+       FROM campaigns c
+       LEFT JOIN email_templates t ON t.id = c.template_id
+       ORDER BY c.scheduled_at DESC, c.created_at DESC`,
+    )
+    .all();
 }
 
 export async function createCampaign({
@@ -570,230 +671,250 @@ export async function createCampaign({
   audience = "newsletter",
   recipientIds = null,
 }) {
-  const ids = audience === "selection" && Array.isArray(recipientIds)
-    ? recipientIds
-    : null;
-  const [campaign] = await sql`
-    INSERT INTO campaigns (template_id, subject, scheduled_at, audience, recipient_ids)
-    SELECT id, ${subject}, ${scheduledAt}, ${audience}, ${ids}
-    FROM email_templates
-    WHERE id = ${templateId}
-    RETURNING id, template_id, subject, scheduled_at, sent_at, status, recipient_count, audience, created_at
-  `;
-  return campaign || null;
+  const ids =
+    audience === "selection" && Array.isArray(recipientIds)
+      ? JSON.stringify(recipientIds)
+      : null;
+  const row = db
+    .query(
+      `INSERT INTO campaigns (template_id, subject, scheduled_at, audience, recipient_ids)
+       SELECT id, ?, ?, ?, ? FROM email_templates WHERE id = ?
+       RETURNING id, template_id, subject, scheduled_at, sent_at, status, recipient_count, audience, created_at`,
+    )
+    .get(subject, iso(scheduledAt), audience, ids, templateId);
+  return row || null;
+}
+
+// Load a single campaign (for the job worker), with recipient_ids parsed.
+export async function getCampaignById(id) {
+  const row = db
+    .query(
+      `SELECT id, template_id, subject, scheduled_at, sent_at, status,
+              recipient_count, audience, sent_offset, recipient_ids, created_at
+       FROM campaigns WHERE id = ?`,
+    )
+    .get(id);
+  if (!row) return null;
+  row.recipient_ids = parseIds(row.recipient_ids);
+  return row;
 }
 
 export async function cancelCampaign(id) {
-  const [campaign] = await sql`
-    DELETE FROM campaigns
-    WHERE id = ${id}
-      AND status = 'scheduled'
-    RETURNING id
-  `;
-  return Boolean(campaign);
+  const row = db
+    .query(
+      `DELETE FROM campaigns WHERE id = ? AND status = 'scheduled' RETURNING id`,
+    )
+    .get(id);
+  return Boolean(row);
 }
 
 export async function claimDueCampaigns() {
-  return await sql`
-    UPDATE campaigns
-    SET status = 'sending'
-    WHERE id IN (
-      SELECT id
-      FROM campaigns
-      WHERE scheduled_at <= NOW()
-        AND status IN ('scheduled', 'failed')
-      ORDER BY scheduled_at ASC
-      FOR UPDATE SKIP LOCKED
+  // SQLite is a single writer, so no FOR UPDATE SKIP LOCKED is needed.
+  const rows = db
+    .query(
+      `UPDATE campaigns SET status = 'sending'
+       WHERE scheduled_at <= ? AND status IN ('scheduled', 'failed')
+       RETURNING id, template_id, subject, scheduled_at, audience, sent_offset, recipient_ids`,
     )
-    RETURNING id, template_id, subject, scheduled_at, audience, sent_offset, recipient_ids
-  `;
+    .all(nowIso());
+  for (const r of rows) r.recipient_ids = parseIds(r.recipient_ids);
+  return rows;
+}
+
+// Claim a single campaign for sending (used by the Honker job handler).
+// Returns the row (recipient_ids parsed) or null if it isn't due/claimable.
+export async function claimCampaignById(id) {
+  const row = db
+    .query(
+      `UPDATE campaigns SET status = 'sending'
+       WHERE id = ? AND status IN ('scheduled', 'failed')
+       RETURNING id, template_id, subject, scheduled_at, audience, sent_offset, recipient_ids`,
+    )
+    .get(id);
+  if (!row) return null;
+  row.recipient_ids = parseIds(row.recipient_ids);
+  return row;
+}
+
+// Ids of campaigns whose send time has arrived (for the reconciler).
+export async function getDueCampaignIds() {
+  return db
+    .query(
+      `SELECT id FROM campaigns
+       WHERE scheduled_at <= ? AND status IN ('scheduled', 'failed')`,
+    )
+    .all(nowIso())
+    .map((r) => r.id);
 }
 
 export async function markCampaignSent(id, recipientCount) {
-  await sql`
-    UPDATE campaigns
-    SET status = 'sent', sent_at = NOW(), recipient_count = ${recipientCount}
-    WHERE id = ${id}
-  `;
+  db.query(
+    `UPDATE campaigns SET status = 'sent', sent_at = ?, recipient_count = ? WHERE id = ?`,
+  ).run(nowIso(), recipientCount, id);
 }
 
 export async function markCampaignFailed(id, recipientCount = null) {
-  await sql`
-    UPDATE campaigns
-    SET status = 'failed',
-        recipient_count = COALESCE(${recipientCount}, recipient_count)
-    WHERE id = ${id}
-  `;
+  db.query(
+    `UPDATE campaigns SET status = 'failed',
+       recipient_count = COALESCE(?, recipient_count) WHERE id = ?`,
+  ).run(recipientCount, id);
 }
 
 export async function incrementCampaignOffset(id, count) {
-  await sql`
-    UPDATE campaigns
-    SET sent_offset = sent_offset + ${count},
-        recipient_count = sent_offset + ${count}
-    WHERE id = ${id}
-  `;
+  db.query(
+    `UPDATE campaigns SET sent_offset = sent_offset + ?, recipient_count = sent_offset + ?
+     WHERE id = ?`,
+  ).run(count, count, id);
 }
 
+// ---- newsletter / zoom recipients ------------------------------------------
+
 export async function getNewsletterRecipientByEmail(email) {
-  const [row] = await sql`
-    SELECT id, name, email
-    FROM signers
-    WHERE email = ${email}
-      AND verified = TRUE
-      AND newsletter = TRUE
-  `;
-  return row || null;
+  return (
+    db
+      .query(
+        `SELECT id, name, email FROM signers
+         WHERE email = ? AND verified = 1 AND newsletter = 1`,
+      )
+      .get(email) || null
+  );
 }
 
 export async function getZoomRecipientByEmail(email) {
-  const [row] = await sql`
-    SELECT id, name, email
-    FROM zoom_registrations
-    WHERE email = ${email}
-  `;
-  return row || null;
+  return (
+    db
+      .query(`SELECT id, name, email FROM zoom_registrations WHERE email = ?`)
+      .get(email) || null
+  );
 }
 
 export async function getNewsletterRecipients() {
-  return await sql`
-    SELECT id, name, email, unsubscribe_token
-    FROM signers
-    WHERE verified = TRUE
-      AND newsletter = TRUE
-    ORDER BY created_at ASC
-  `;
+  return db
+    .query(
+      `SELECT id, name, email, unsubscribe_token FROM signers
+       WHERE verified = 1 AND newsletter = 1 ORDER BY created_at ASC`,
+    )
+    .all();
 }
 
 export async function getNewsletterNotZoomRecipients() {
-  return await sql`
-    SELECT id, name, email, unsubscribe_token
-    FROM signers s
-    WHERE s.verified = TRUE
-      AND s.newsletter = TRUE
-      AND NOT EXISTS (
-        SELECT 1 FROM zoom_registrations z WHERE z.email = s.email
-      )
-    ORDER BY s.created_at ASC
-  `;
+  return db
+    .query(
+      `SELECT id, name, email, unsubscribe_token FROM signers s
+       WHERE s.verified = 1 AND s.newsletter = 1
+         AND NOT EXISTS (SELECT 1 FROM zoom_registrations z WHERE z.email = s.email)
+       ORDER BY s.created_at ASC`,
+    )
+    .all();
 }
 
 export async function getNewsletterRecipientsByIds(ids) {
   if (!Array.isArray(ids) || ids.length === 0) return [];
-  return await sql`
-    SELECT id, name, email, unsubscribe_token
-    FROM signers
-    WHERE verified = TRUE
-      AND newsletter = TRUE
-      AND id = ANY(${ids})
-    ORDER BY created_at ASC
-  `;
+  const placeholders = ids.map(() => "?").join(", ");
+  return db
+    .query(
+      `SELECT id, name, email, unsubscribe_token FROM signers
+       WHERE verified = 1 AND newsletter = 1 AND id IN (${placeholders})
+       ORDER BY created_at ASC`,
+    )
+    .all(...ids);
 }
+
+// ---- unsubscribe tokens ----------------------------------------------------
 
 export async function refreshUnsubscribeToken(id) {
   const token = crypto.randomUUID();
-  const [row] = await sql`
-    UPDATE signers
-    SET unsubscribe_token = ${token}, unsubscribe_token_created_at = NOW()
-    WHERE id = ${id}
-    RETURNING unsubscribe_token
-  `;
+  const row = db
+    .query(
+      `UPDATE signers SET unsubscribe_token = ?, unsubscribe_token_created_at = ?
+       WHERE id = ? RETURNING unsubscribe_token`,
+    )
+    .get(token, nowIso(), id);
   return row?.unsubscribe_token || token;
 }
 
 export async function refreshUnsubscribeTokenByEmail(email) {
   const token = crypto.randomUUID();
-  const [row] = await sql`
-    UPDATE signers
-    SET unsubscribe_token = ${token}, unsubscribe_token_created_at = NOW()
-    WHERE email = ${email}
-    RETURNING unsubscribe_token
-  `;
-  return row?.unsubscribe_token || null;
-}
-
-export async function refreshUnsubscribeTokenByEmail(email) {
-  const token = crypto.randomUUID();
-  const [row] = await sql`
-    UPDATE signers
-    SET unsubscribe_token = ${token}, unsubscribe_token_created_at = NOW()
-    WHERE email = ${email}
-    RETURNING unsubscribe_token
-  `;
+  const row = db
+    .query(
+      `UPDATE signers SET unsubscribe_token = ?, unsubscribe_token_created_at = ?
+       WHERE email = ? RETURNING unsubscribe_token`,
+    )
+    .get(token, nowIso(), email);
   return row?.unsubscribe_token || null;
 }
 
 export async function getUnsubscribeState(token) {
-  const [signer] = await sql`
-    SELECT id, email, newsletter, verified
-    FROM signers
-    WHERE unsubscribe_token = ${token}
-      AND unsubscribe_token_created_at > NOW() - INTERVAL '90 days'
-  `;
-  return signer || null;
+  const row = db
+    .query(
+      `SELECT id, email, newsletter, verified FROM signers
+       WHERE unsubscribe_token = ? AND unsubscribe_token_created_at > ?`,
+    )
+    .get(token, isoAgo(90 * DAY));
+  return boolify(row || null, ["newsletter", "verified"]);
 }
 
 export async function optOutNewsletter(token) {
-  const [signer] = await sql`
-    UPDATE signers
-    SET newsletter = FALSE,
-        unsubscribe_token = NULL,
-        unsubscribe_token_created_at = NULL
-    WHERE unsubscribe_token = ${token}
-      AND unsubscribe_token_created_at > NOW() - INTERVAL '90 days'
-    RETURNING id
-  `;
-  return Boolean(signer);
+  const row = db
+    .query(
+      `UPDATE signers
+       SET newsletter = 0, unsubscribe_token = NULL, unsubscribe_token_created_at = NULL
+       WHERE unsubscribe_token = ? AND unsubscribe_token_created_at > ?
+       RETURNING id`,
+    )
+    .get(token, isoAgo(90 * DAY));
+  return Boolean(row);
 }
 
 export async function deleteSignerByUnsubscribeToken(token) {
-  const [signer] = await sql`
-    DELETE FROM signers
-    WHERE unsubscribe_token = ${token}
-      AND unsubscribe_token_created_at > NOW() - INTERVAL '90 days'
-    RETURNING id
-  `;
-  return Boolean(signer);
+  const row = db
+    .query(
+      `DELETE FROM signers
+       WHERE unsubscribe_token = ? AND unsubscribe_token_created_at > ? RETURNING id`,
+    )
+    .get(token, isoAgo(90 * DAY));
+  return Boolean(row);
 }
 
 // Resolve email from either a signer or zoom unsubscribe token.
-// `source` hints which table to try first ("zoom" or "newsletter"/default).
 export async function resolveEmailFromToken(token, source) {
   if (source === "zoom") {
-    const [zoom] = await sql`
-      SELECT email FROM zoom_registrations WHERE unsubscribe_token = ${token}
-    `;
+    const zoom = db
+      .query(`SELECT email FROM zoom_registrations WHERE unsubscribe_token = ?`)
+      .get(token);
     if (zoom) return zoom.email;
   }
-  // Try signer
-  const [signer] = await sql`
-    SELECT email FROM signers
-    WHERE unsubscribe_token = ${token}
-      AND unsubscribe_token_created_at > NOW() - INTERVAL '90 days'
-  `;
+  const signer = db
+    .query(
+      `SELECT email FROM signers
+       WHERE unsubscribe_token = ? AND unsubscribe_token_created_at > ?`,
+    )
+    .get(token, isoAgo(90 * DAY));
   if (signer) return signer.email;
-  // Fallback: try the other table
   if (source !== "zoom") {
-    const [zoom] = await sql`
-      SELECT email FROM zoom_registrations WHERE unsubscribe_token = ${token}
-    `;
+    const zoom = db
+      .query(`SELECT email FROM zoom_registrations WHERE unsubscribe_token = ?`)
+      .get(token);
     if (zoom) return zoom.email;
   }
   return null;
 }
 
-// Cross-check both tables by email to build unified state.
 export async function getUnifiedUnsubscribeState(token, source) {
   const email = await resolveEmailFromToken(token, source);
   if (!email) return null;
 
-  const [signer] = await sql`
-    SELECT name, kreisverband, occupation, newsletter, show_publicly, verified
-    FROM signers WHERE email = ${email}
-  `;
-  const [zoom] = await sql`
-    SELECT name, kreisverband, delegierter FROM zoom_registrations WHERE email = ${email}
-  `;
+  const signer = db
+    .query(
+      `SELECT name, kreisverband, occupation, newsletter, show_publicly, verified
+    FROM signers WHERE email = ?`,
+    )
+    .get(email);
+  const zoom = db
+    .query(
+      `SELECT name, kreisverband, delegierter FROM zoom_registrations WHERE email = ?`,
+    )
+    .get(email);
 
   const masked = email.replace(
     /^(.)(.*)(@.*)$/,
@@ -803,9 +924,9 @@ export async function getUnifiedUnsubscribeState(token, source) {
   return {
     emailMasked: masked,
     source: source === "zoom" ? "zoom" : "newsletter",
-    newsletter: signer?.newsletter ?? false,
+    newsletter: Boolean(signer?.newsletter),
     hasZoom: Boolean(zoom),
-    canDeleteSigner: signer?.verified ?? false,
+    canDeleteSigner: Boolean(signer?.verified),
     hasSigner: Boolean(signer),
     // Current editable values for the self-service settings form.
     name: signer?.name ?? "",
@@ -856,34 +977,29 @@ export async function updateZoomByEmail(
 }
 
 export async function optOutNewsletterByEmail(email) {
-  const [row] = await sql`
-    UPDATE signers SET newsletter = FALSE WHERE email = ${email} RETURNING id
-  `;
+  const row = db
+    .query(`UPDATE signers SET newsletter = 0 WHERE email = ? RETURNING id`)
+    .get(email);
   return Boolean(row);
 }
 
 export async function deleteZoomByEmail(email) {
-  const [row] = await sql`
-    DELETE FROM zoom_registrations WHERE email = ${email} RETURNING id
-  `;
+  const row = db
+    .query(`DELETE FROM zoom_registrations WHERE email = ? RETURNING id`)
+    .get(email);
   return Boolean(row);
 }
 
+// ---- occupations -----------------------------------------------------------
+
 export function normalizeOccupation(occ) {
   let s = occ.trim();
-  // Strip explicit gender markers: *in, *innen, :in, /in etc.
   s = s.replace(/\*innen$|\*in$|:innen$|:in$|\/innen$|\/in$/i, "");
-  // Strip feminine -in/-innen suffix (Lehrerin→Lehrer, Ärztinnen→Ärzt)
   s = s.replace(/innen$|in$/i, (m, offset, str) => {
     const before = str.slice(0, offset);
     if (before.length >= 2) return "";
     return m;
   });
-  // Strip adjectival & weak-noun endings -er/-e so gender variants
-  // normalize to the same base:
-  //   Angestellter / Angestellte  → angestellt
-  //   Sozialpädagoge              → sozialpädagog  (matches Sozialpädagogin→sozialpädagog)
-  //   Lehrer                      → lehr           (matches Lehrerin→Lehrer→lehr)
   s = s.replace(/er$|e$/i, (m, offset) => {
     if (offset >= 3) return "";
     return m;
@@ -892,46 +1008,33 @@ export function normalizeOccupation(occ) {
 }
 
 function addGendersternchen(label) {
-  // Already has a gender marker — leave it
   if (/[*:/]in(nen)?$/i.test(label)) return label;
-
-  // Feminine -in/-innen form: Ärztin → Ärzt*in, Studentin → Student*in
   const femMatch = label.match(/^(.+?)(innen|in)$/i);
   if (femMatch && femMatch[1].length >= 2) {
     return `${femMatch[1]}*${femMatch[2].toLowerCase()}`;
   }
-
-  // Adjectival masculine -er (stem ends in -t/-d):
-  //   Angestellter → Angestellte*r, Beamter → Beamte*r
   const adjErMatch = label.match(/^(.+[dt])er$/i);
   if (adjErMatch && adjErMatch[1].length >= 3) {
     return `${adjErMatch[1]}e*r`;
   }
-
-  // Adjectival feminine -e (stem ends in -t/-d):
-  //   Angestellte → Angestellte*r, Studierende → Studierende*r
   const adjEMatch = label.match(/^(.+[dt])e$/i);
   if (adjEMatch && adjEMatch[1].length >= 3) {
     return `${label}*r`;
   }
-
-  // Weak masculine -e (consonant + e): Sozialpädagoge → Sozialpädagog*in
   if (label.length >= 4 && /[^aeioüö]e$/i.test(label)) {
     return `${label.slice(0, -1)}*in`;
   }
-
-  // Default: Lehrer → Lehrer*in
   return `${label}*in`;
 }
 
 export async function getOccupations() {
-  const rows = await sql`
-    SELECT occupation, COUNT(*)::int AS count
-    FROM signers
-    WHERE verified = TRUE AND occupation != '' AND show_publicly = TRUE
-    GROUP BY occupation
-    ORDER BY count DESC, occupation ASC
-  `;
+  const rows = db
+    .query(
+      `SELECT occupation, COUNT(*) AS count FROM signers
+       WHERE verified = 1 AND occupation != '' AND show_publicly = 1
+       GROUP BY occupation ORDER BY count DESC, occupation ASC`,
+    )
+    .all();
   const groups = new Map();
   for (const row of rows) {
     const key = normalizeOccupation(row.occupation);
@@ -959,157 +1062,154 @@ export async function getOccupations() {
     }));
 }
 
-export async function getKreisverbandStats() {
-  const rows = await sql`
-    SELECT
-      CASE WHEN kreisverband = '' THEN 'Ohne Kreisverband' ELSE kreisverband END AS kreisverband,
-      COALESCE(NULLIF(state, ''), '') AS state,
-      COUNT(*)::int AS count
-    FROM signers
-    WHERE verified = TRUE AND show_publicly = TRUE
-    GROUP BY 1, 2
-    ORDER BY count DESC, kreisverband ASC
-  `;
-  return rows;
-}
-
-export async function getDistinctKreisverbands() {
-  return await sql`
-    SELECT kreisverband, COUNT(*)::int AS count
-    FROM signers
-    WHERE verified = TRUE AND kreisverband != ''
-    GROUP BY kreisverband
-    ORDER BY count DESC, kreisverband ASC
-  `;
-}
-
-export async function mergeKreisverband(fromKv, toKv) {
-  const result = await sql`
-    UPDATE signers
-    SET kreisverband = ${toKv}, state = ''
-    WHERE kreisverband = ${fromKv}
-    RETURNING id
-  `;
-  return result.length;
-}
-
 export async function getDistinctOccupations() {
-  return await sql`
-    SELECT occupation, COUNT(*)::int AS count
-    FROM signers
-    WHERE verified = TRUE AND occupation != ''
-    GROUP BY occupation
-    ORDER BY count DESC, occupation ASC
-  `;
+  return db
+    .query(
+      `SELECT occupation, COUNT(*) AS count FROM signers
+       WHERE verified = 1 AND occupation != ''
+       GROUP BY occupation ORDER BY count DESC, occupation ASC`,
+    )
+    .all();
 }
 
 export async function mergeOccupation(fromOcc, toOcc) {
-  const result = await sql`
-    UPDATE signers
-    SET occupation = ${toOcc}
-    WHERE occupation = ${fromOcc}
-    RETURNING id
-  `;
-  return result.length;
+  const rows = db
+    .query(
+      `UPDATE signers SET occupation = ? WHERE occupation = ? RETURNING id`,
+    )
+    .all(toOcc, fromOcc);
+  return rows.length;
 }
 
 export async function insertOccNotTypo(canonical, outlier) {
-  await sql`
-    INSERT INTO occupation_not_typo (canonical, outlier)
-    VALUES (${canonical}, ${outlier})
-    ON CONFLICT DO NOTHING
-  `;
+  db.query(
+    `INSERT INTO occupation_not_typo (canonical, outlier) VALUES (?, ?)
+     ON CONFLICT DO NOTHING`,
+  ).run(canonical, outlier);
 }
 
 export async function loadOccNotTypo() {
-  return await sql`SELECT canonical, outlier FROM occupation_not_typo`;
+  return db.query(`SELECT canonical, outlier FROM occupation_not_typo`).all();
+}
+
+// ---- kreisverband / state --------------------------------------------------
+
+export async function getKreisverbandStats() {
+  return db
+    .query(
+      `SELECT
+        CASE WHEN kreisverband = '' THEN 'Ohne Kreisverband' ELSE kreisverband END AS kreisverband,
+        COALESCE(NULLIF(state, ''), '') AS state,
+        COUNT(*) AS count
+      FROM signers
+      WHERE verified = 1 AND show_publicly = 1
+      GROUP BY 1, 2
+      ORDER BY count DESC, kreisverband ASC`,
+    )
+    .all();
+}
+
+export async function getDistinctKreisverbands() {
+  return db
+    .query(
+      `SELECT kreisverband, COUNT(*) AS count FROM signers
+       WHERE verified = 1 AND kreisverband != ''
+       GROUP BY kreisverband ORDER BY count DESC, kreisverband ASC`,
+    )
+    .all();
+}
+
+export async function mergeKreisverband(fromKv, toKv) {
+  const rows = db
+    .query(
+      `UPDATE signers SET kreisverband = ?, state = '' WHERE kreisverband = ? RETURNING id`,
+    )
+    .all(toKv, fromKv);
+  return rows.length;
 }
 
 export async function updateSignerState(id, state) {
-  await sql`UPDATE signers SET state = ${state} WHERE id = ${id}`;
+  db.query(`UPDATE signers SET state = ? WHERE id = ?`).run(state, id);
 }
 
 export async function getSignersNeedingState(limit = null) {
   if (limit) {
-    return await sql`
-      SELECT s.id, s.kreisverband
-      FROM signers s
-      WHERE s.verified = TRUE
-        AND s.kreisverband != ''
-        AND s.state = ''
-      ORDER BY s.created_at DESC
-      LIMIT ${limit}
-    `;
+    return db
+      .query(
+        `SELECT s.id, s.kreisverband FROM signers s
+         WHERE s.verified = 1 AND s.kreisverband != '' AND s.state = ''
+         ORDER BY s.created_at DESC LIMIT ?`,
+      )
+      .all(limit);
   }
-  return await sql`
-    SELECT s.id, s.kreisverband
-    FROM signers s
-    WHERE s.verified = TRUE
-      AND s.kreisverband != ''
-      AND s.state = ''
-    ORDER BY s.created_at DESC
-  `;
+  return db
+    .query(
+      `SELECT s.id, s.kreisverband FROM signers s
+       WHERE s.verified = 1 AND s.kreisverband != '' AND s.state = ''
+       ORDER BY s.created_at DESC`,
+    )
+    .all();
 }
 
 export async function getUnresolvedKvs() {
-  return await sql`
-    SELECT kreisverband, COUNT(*)::int AS count
-    FROM signers
-    WHERE verified = TRUE AND kreisverband != '' AND state = ''
-    GROUP BY kreisverband
-    ORDER BY count DESC, kreisverband ASC
-  `;
+  return db
+    .query(
+      `SELECT kreisverband, COUNT(*) AS count FROM signers
+       WHERE verified = 1 AND kreisverband != '' AND state = ''
+       GROUP BY kreisverband ORDER BY count DESC, kreisverband ASC`,
+    )
+    .all();
 }
 
 export async function getStateStats() {
-  return await sql`
-    SELECT
-      CASE WHEN state = '' THEN 'Unbekannt' ELSE state END AS state,
-      COUNT(*)::int AS count
-    FROM signers
-    WHERE verified = TRUE AND show_publicly = TRUE
-    GROUP BY 1
-    ORDER BY count DESC, state ASC
-  `;
+  return db
+    .query(
+      `SELECT
+        CASE WHEN state = '' THEN 'Unbekannt' ELSE state END AS state,
+        COUNT(*) AS count
+      FROM signers
+      WHERE verified = 1 AND show_publicly = 1
+      GROUP BY 1 ORDER BY count DESC, state ASC`,
+    )
+    .all();
 }
 
 export async function ensureKvStateCacheTable() {
-  await sql`
-    CREATE TABLE IF NOT EXISTS kv_state_cache (
+  db.run(
+    `CREATE TABLE IF NOT EXISTS kv_state_cache (
       kreisverband  TEXT PRIMARY KEY,
       state         TEXT NOT NULL DEFAULT '',
       source        TEXT NOT NULL DEFAULT 'nominatim',
-      resolved_at   TIMESTAMPTZ DEFAULT NOW()
-    )
-  `;
-  await sql`
-    CREATE TABLE IF NOT EXISTS kv_not_typo (
+      resolved_at   TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    )`,
+  );
+  db.run(
+    `CREATE TABLE IF NOT EXISTS kv_not_typo (
       canonical     TEXT NOT NULL,
       outlier       TEXT NOT NULL,
-      created_at    TIMESTAMPTZ DEFAULT NOW(),
+      created_at    TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
       PRIMARY KEY (canonical, outlier)
-    )
-  `;
-  await sql`
-    CREATE TABLE IF NOT EXISTS occupation_not_typo (
+    )`,
+  );
+  db.run(
+    `CREATE TABLE IF NOT EXISTS occupation_not_typo (
       canonical     TEXT NOT NULL,
       outlier       TEXT NOT NULL,
-      created_at    TIMESTAMPTZ DEFAULT NOW(),
+      created_at    TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
       PRIMARY KEY (canonical, outlier)
-    )
-  `;
+    )`,
+  );
 }
 
 export async function insertKvNotTypo(canonical, outlier) {
-  await sql`
-    INSERT INTO kv_not_typo (canonical, outlier)
-    VALUES (${canonical}, ${outlier})
-    ON CONFLICT DO NOTHING
-  `;
+  db.query(
+    `INSERT INTO kv_not_typo (canonical, outlier) VALUES (?, ?)
+     ON CONFLICT DO NOTHING`,
+  ).run(canonical, outlier);
 }
 
 export async function loadKvNotTypo() {
-  return await sql`SELECT canonical, outlier FROM kv_not_typo`;
+  return db.query(`SELECT canonical, outlier FROM kv_not_typo`).all();
 }
 
 export async function upsertKvStateCache(
@@ -1117,55 +1217,55 @@ export async function upsertKvStateCache(
   state,
   source = "nominatim",
 ) {
-  await sql`
-    INSERT INTO kv_state_cache (kreisverband, state, source, resolved_at)
-    VALUES (${kreisverband}, ${state}, ${source}, NOW())
-    ON CONFLICT (kreisverband) DO UPDATE
-      SET state = EXCLUDED.state,
-          source = EXCLUDED.source,
-          resolved_at = NOW()
-  `;
+  db.query(
+    `INSERT INTO kv_state_cache (kreisverband, state, source, resolved_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT (kreisverband) DO UPDATE
+       SET state = excluded.state, source = excluded.source, resolved_at = ?`,
+  ).run(kreisverband, state, source, nowIso(), nowIso());
 }
 
 export async function clearEmptyKvCacheEntries() {
-  const result = await sql`
-    DELETE FROM kv_state_cache WHERE state = ''
-    RETURNING kreisverband
-  `;
-  return result.length;
+  const rows = db
+    .query(`DELETE FROM kv_state_cache WHERE state = '' RETURNING kreisverband`)
+    .all();
+  return rows.length;
 }
 
 export async function loadKvStateCache() {
-  return await sql`
-    SELECT kreisverband, state FROM kv_state_cache WHERE state != ''
-  `;
+  return db
+    .query(`SELECT kreisverband, state FROM kv_state_cache WHERE state != ''`)
+    .all();
 }
 
 export async function bulkUpdateSignerStateByKv(kreisverband, state) {
-  const result = await sql`
-    UPDATE signers SET state = ${state}
-    WHERE kreisverband = ${kreisverband} AND state = ''
-    RETURNING id
-  `;
-  return result.length;
+  const rows = db
+    .query(
+      `UPDATE signers SET state = ? WHERE kreisverband = ? AND state = '' RETURNING id`,
+    )
+    .all(state, kreisverband);
+  return rows.length;
 }
 
 export async function getStateResolutionStats() {
-  const [row] = await sql`
-    SELECT
-      COUNT(DISTINCT s.kreisverband) FILTER (WHERE s.state != '')::int AS "resolvedKvs",
-      COUNT(DISTINCT s.kreisverband) FILTER (WHERE s.state = '')::int AS "unresolvedKvs",
-      COUNT(*) FILTER (WHERE s.state = '')::int AS "unresolvedSigners",
-      COUNT(*) FILTER (WHERE s.state != '')::int AS "resolvedSigners"
-    FROM signers s
-    WHERE s.verified = TRUE AND s.kreisverband != ''
-  `;
-  return row;
+  return db
+    .query(
+      `SELECT
+        COUNT(DISTINCT s.kreisverband) FILTER (WHERE s.state != '') AS "resolvedKvs",
+        COUNT(DISTINCT s.kreisverband) FILTER (WHERE s.state = '') AS "unresolvedKvs",
+        COUNT(*) FILTER (WHERE s.state = '') AS "unresolvedSigners",
+        COUNT(*) FILTER (WHERE s.state != '') AS "resolvedSigners"
+      FROM signers s
+      WHERE s.verified = 1 AND s.kreisverband != ''`,
+    )
+    .get();
 }
+
+// ---- health / lifecycle ----------------------------------------------------
 
 export async function healthCheck() {
   try {
-    await sql`SELECT 1`;
+    db.query("SELECT 1").get();
     return true;
   } catch {
     return false;
@@ -1173,5 +1273,5 @@ export async function healthCheck() {
 }
 
 export async function close() {
-  await sql.end();
+  db.close();
 }

@@ -2,6 +2,13 @@ node_modules
 .bun
 .env
 *.log
+
+# Encrypted SQLite database, WAL/SHM sidecars, backups
+data/
+*.db
+*.db-wal
+*.db-shm
+backups/
 design-extract
 .claude
 bun.lock
@@ -10,8 +17,5 @@ bun.lock
 # DKIM private keys — never commit these
 haraka/config/dkim/*/private
 .DS_Store
+vendor/*.dylib
 design-export
-vendor
-*.db
-*.db-shm
-*.db-wal

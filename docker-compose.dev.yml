@@ -6,7 +6,8 @@ services:
     ports:
       - "${PORT:-3000}:3000"
     environment:
-      - DATABASE_URL=postgres://diaetendeckel:${DB_PASSWORD:-devpass}@db:5432/diaetendeckel
+      - DATABASE_PATH=/app/data/diaetendeckel.db
+      - DATABASE_ENCRYPTION_KEY=${DATABASE_ENCRYPTION_KEY:-devkey-change-me}
       - PORT=3000
       - BASE_URL=${BASE_URL:-http://localhost:3000}
       - ADMIN_PATH=${ADMIN_PATH}
@@ -14,9 +15,8 @@ services:
       - ADMIN_JWT_SECRET=${ADMIN_JWT_SECRET}
       - RESEND_API_KEY=${RESEND_API_KEY}
       - RESEND_FROM=${RESEND_FROM:-"Gehaltsdeckel Initiative" <noreply@gehaltsdeckel.jetzt>}
-    depends_on:
-      db:
-        condition: service_healthy
+    volumes:
+      - data-dev:/app/data
     restart: unless-stopped
     healthcheck:
       test:
@@ -31,20 +31,5 @@ services:
       retries: 3
       start_period: 15s
 
-  db:
-    image: postgres:18-alpine
-    environment:
-      - POSTGRES_DB=diaetendeckel
-      - POSTGRES_USER=diaetendeckel
-      - POSTGRES_PASSWORD=${DB_PASSWORD:-devpass}
-    volumes:
-      - pgdata-dev:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U diaetendeckel"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
 volumes:
-  pgdata-dev:
+  data-dev:
