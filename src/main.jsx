@@ -1,66 +1,15 @@
 import { createRoot } from "react-dom/client";
-import { Component, lazy, Suspense } from "react";
 import App from "./App.jsx";
-const AdminApp = lazy(() => import("./AdminApp.jsx"));
 import UnsubscribeApp from "./UnsubscribeApp.jsx";
+import { ErrorBoundary } from "./ErrorBoundary.jsx";
 import "./index.css";
 
-class ErrorBoundary extends Component {
-  state = { crashed: false };
-  static getDerivedStateFromError() {
-    return { crashed: true };
-  }
-  componentDidCatch(err, info) {
-    console.error("[ErrorBoundary]", err, info);
-  }
-  render() {
-    if (this.state.crashed) {
-      return (
-        <div
-          style={{
-            padding: "40px 24px",
-            fontFamily: "Inter, sans-serif",
-            color: "var(--akzent, #6f003c)",
-            maxWidth: 480,
-            margin: "80px auto",
-          }}
-        >
-          <h1 style={{ fontSize: "1.5rem", marginBottom: 16 }}>
-            Seite konnte nicht geladen werden
-          </h1>
-          <p style={{ marginBottom: 24 }}>
-            Ein unerwarteter Fehler ist aufgetreten. Bitte lade die Seite neu.
-          </p>
-          <button
-            onClick={() => window.location.reload()}
-            style={{
-              padding: "12px 24px",
-              background: "var(--rot, #ff0000)",
-              color: "#fff",
-              border: "none",
-              cursor: "pointer",
-              fontFamily: "inherit",
-              fontSize: "1rem",
-            }}
-          >
-            Seite neu laden
-          </button>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
-
+// The admin dashboard has its own entrypoint (admin.html → src/admin-main.jsx),
+// served at the secret /${ADMIN_PATH} route, so AdminApp is bundled separately
+// and never ships in this public bundle.
 function getRootComponent() {
   const parts = window.location.pathname.split("/").filter(Boolean);
   if (parts[0] === "abmelden" && parts[1]) return <UnsubscribeApp />;
-  if (parts[0] === "verwaltung" && parts.length === 1)
-    return (
-      <Suspense fallback={<div style={{ padding: "40px 24px", fontFamily: "Inter, sans-serif", color: "var(--akzent, #6f003c)", textAlign: "center", marginTop: 80 }}>Laden&hellip;</div>}>
-        <AdminApp />
-      </Suspense>
-    );
   return <App />;
 }
 

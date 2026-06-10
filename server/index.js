@@ -202,6 +202,7 @@ if (!isDev && !TRUST_PROXY) {
 }
 
 const { default: homepage } = await import("../index.html");
+const { default: admin } = await import("../admin.html");
 
 const adminRoute = `/${ADMIN_PATH}`;
 const jwtSecret = new TextEncoder().encode(ADMIN_JWT_SECRET);
@@ -719,7 +720,7 @@ const server = Bun.serve({
 
   routes: {
     "/": homepage,
-    [adminRoute]: homepage,
+    [adminRoute]: admin,
     "/abmelden/:token": homepage,
 
     "/og.png": {
