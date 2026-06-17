@@ -1,9 +1,15 @@
 import { timingSafeEqual } from "node:crypto";
 import { Buffer } from "node:buffer";
+import { readFileSync, writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { SignJWT, jwtVerify } from "jose";
+import cfg, { LETTER_NAME } from "../config/letter.config.js";
+import { renderIndexHtml, analyticsOrigin } from "../config/html.js";
 import {
   getSigners,
   getStats,
+  getMilestones,
+  setMilestones,
   getNewsletterStats,
   getOccupations,
   getKreisverbandStats,
@@ -91,6 +97,8 @@ import {
   renderTemplateBySlug,
   sendAlreadySignedEmail,
   zoomCalendarButton,
+  messageDelayMs,
+  batchDelayMs,
 } from "./email.js";
 import { buildZoomIcs } from "./ics.js";
 import { checkRateLimit } from "./ratelimit.js";
@@ -122,11 +130,12 @@ const ALLOWED_ORIGINS = new Set(
 );
 const isDev = process.env.NODE_ENV !== "production";
 const TRUST_PROXY = process.env.TRUST_PROXY === "true";
+// Zoom event defaults come from the active letter config; env overrides win.
 const ZOOM_LINK = process.env.ZOOM_LINK || "";
 const ZOOM_EVENT_AT_DEFAULT =
-  process.env.ZOOM_EVENT_AT || "2026-06-09T20:00:00+02:00";
+  process.env.ZOOM_EVENT_AT || cfg.zoom?.eventAt || "2026-06-09T20:00:00+02:00";
 const ZOOM_EVENT_DURATION_MIN_DEFAULT = parseInt(
-  process.env.ZOOM_EVENT_DURATION_MIN || "90",
+  process.env.ZOOM_EVENT_DURATION_MIN || String(cfg.zoom?.durationMin || 90),
   10,
 );
 const ZOOM_ICS_URL = `${BASE_URL}/api/zoom-termin.ics`;
@@ -211,8 +220,42 @@ if (!isDev && !TRUST_PROXY) {
   );
 }
 
-const { default: homepage } = await import("../index.html");
-const { default: admin } = await import("../admin.html");
+// Generate the homepage + admin HTML from the active letter config, then let
+// Bun bundle them. Writing only on change keeps git clean for the default
+// letter and avoids dev-watch reload loops. A read-only FS falls back to any
+// pre-existing generated file.
+function writeIfChanged(relPath, content) {
+  const path = fileURLToPath(new URL("../" + relPath, import.meta.url));
+  let existing = null;
+  try {
+    existing = readFileSync(path, "utf8");
+  } catch {}
+  if (existing === content) return;
+  try {
+    writeFileSync(path, content);
+  } catch (err) {
+    if (existing == null) throw err;
+    console.warn(`[html] could not regenerate ${relPath}, using existing:`, err.message);
+  }
+}
+
+writeIfChanged(
+  "index.generated.html",
+  renderIndexHtml(
+    readFileSync(new URL("../index.template.html", import.meta.url), "utf8"),
+    cfg,
+    LETTER_NAME,
+  ),
+);
+writeIfChanged(
+  "admin.generated.html",
+  readFileSync(new URL("../admin.template.html", import.meta.url), "utf8")
+    .replace("{{LANG}}", cfg.brand.lang || "de")
+    .replace("{{LETTER}}", LETTER_NAME),
+);
+
+const { default: homepage } = await import("../index.generated.html");
+const { default: admin } = await import("../admin.generated.html");
 
 const adminRoute = `/${ADMIN_PATH}`;
 const jwtSecret = new TextEncoder().encode(ADMIN_JWT_SECRET);
@@ -290,6 +333,11 @@ function json(data, status = 200, headers = {}) {
   });
 }
 
+// Allow the configured analytics host (script load + beacon) only when set.
+const analyticsHost = analyticsOrigin(cfg);
+const scriptSrc = ["'self'", analyticsHost].filter(Boolean).join(" ");
+const connectSrc = ["'self'", analyticsHost].filter(Boolean).join(" ");
+
 const securityHeaders = {
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
@@ -298,8 +346,7 @@ const securityHeaders = {
   ...(isDev
     ? {}
     : {
-        "Content-Security-Policy":
-          "default-src 'self'; font-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; connect-src 'self'; frame-src 'self' about:",
+        "Content-Security-Policy": `default-src 'self'; font-src 'self'; style-src 'self' 'unsafe-inline'; script-src ${scriptSrc}; img-src 'self' data:; connect-src ${connectSrc}; frame-src 'self' about:`,
         "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
       }),
 };
@@ -531,7 +578,7 @@ async function sendCampaign(campaign) {
       return;
     }
 
-    if (i + 100 < todo.length) await sleep(1000);
+    if (i + 100 < todo.length) await sleep(batchDelayMs);
   }
 
   console.log(
@@ -632,7 +679,7 @@ async function sendZoomLinkMails(cfg) {
     } catch (err) {
       console.error(`[zoom-mail] link send failed for one recipient:`, err);
     }
-    await sleep(550); // respect Resend rate limit (~2/s)
+    await sleep(messageDelayMs); // pace sends to respect provider rate limits
   }
   console.log(
     `[zoom-mail] link mailing done — ${sent}/${recipients.length} sent`,
@@ -658,7 +705,7 @@ async function sendZoomReminderMails(cfg) {
     }
     await sendBatchEmails(payloads, `zoom-reminder/chunk-${chunkIndex}`);
     sent += payloads.length;
-    if (i + 100 < recipients.length) await sleep(1000);
+    if (i + 100 < recipients.length) await sleep(batchDelayMs);
   }
   console.log(`[zoom-mail] reminder done — ${sent}/${recipients.length} sent`);
   return sent;
@@ -788,8 +835,14 @@ const server = Bun.serve({
     "/api/stats": {
       async GET() {
         try {
-          const stats = await getStats();
-          return json(stats);
+          const [stats, milestones] = await Promise.all([
+            getStats(),
+            getMilestones(),
+          ]);
+          const goal =
+            milestones.find((m) => m > stats.total) ??
+            milestones[milestones.length - 1];
+          return json({ ...stats, milestones, goal });
         } catch (err) {
           console.error("GET /api/stats error:", err);
           return json({ error: "Internal server error" }, 500);
@@ -1122,7 +1175,7 @@ const server = Bun.serve({
           const signer = await confirmSigner(token);
 
           if (signer) {
-            if (signer.kreisverband) {
+            if (cfg.features.stateResolution && signer.kreisverband) {
               enqueueStateResolution(signer.id, signer.kreisverband);
             }
             return Response.redirect(`${getBaseUrl(req)}/?confirmed=1`, 302);
@@ -1803,6 +1856,30 @@ const server = Bun.serve({
       },
     },
 
+    "/api/admin/milestones": {
+      async GET(req) {
+        return adminJson(req, async () =>
+          json({ milestones: await getMilestones() }),
+        );
+      },
+      async POST(req) {
+        return adminJson(req, async () => {
+          if (bodyTooLarge(req))
+            return json({ error: "Payload too large" }, 413);
+          const body = await req.json();
+          if (!Array.isArray(body.milestones)) {
+            return json({ error: "milestones muss ein Array sein" }, 400);
+          }
+          try {
+            const milestones = await setMilestones(body.milestones);
+            return json({ ok: true, milestones });
+          } catch (e) {
+            return json({ error: e.message || "Ungültige Meilensteine" }, 400);
+          }
+        });
+      },
+    },
+
     "/api/admin/zoom-test-send": {
       async POST(req) {
         return adminJson(req, async () => {
@@ -2180,13 +2257,17 @@ try {
   console.error("[jobs] init failed:", err);
 }
 
-ensureKvStateCacheTable()
-  .then(() => initStateCache())
-  .then(() => startStateWorker())
-  .catch((err) => {
-    console.error("[state] init failed:", err);
-    startStateWorker();
-  });
+// Kreisverband → Bundesland resolution (Nominatim) is optional and gated by the
+// letter's feature flags.
+if (cfg.features.stateResolution) {
+  ensureKvStateCacheTable()
+    .then(() => initStateCache())
+    .then(() => startStateWorker())
+    .catch((err) => {
+      console.error("[state] init failed:", err);
+      startStateWorker();
+    });
+}
 
 function shutdown() {
   console.log("Shutting down...");

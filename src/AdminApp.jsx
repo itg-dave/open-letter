@@ -469,6 +469,8 @@ export default function AdminApp() {
   const [zoomLinkOffset, setZoomLinkOffset] = useState(24);
   const [zoomReminderOffset, setZoomReminderOffset] = useState(2);
   const [zoomSettingsStatus, setZoomSettingsStatus] = useState(null);
+  const [milestonesInput, setMilestonesInput] = useState("");
+  const [milestonesStatus, setMilestonesStatus] = useState(null);
 
   // Unterzeichner (newsletter signer list) tab
   const SIGNER_PAGE_SIZE = 25;
@@ -575,6 +577,7 @@ export default function AdminApp() {
       outlierRes,
       unresolvedRes,
       occOutlierRes,
+      milestonesRes,
     ] = await Promise.all([
       api("/api/admin/templates"),
       api("/api/admin/campaigns"),
@@ -583,6 +586,7 @@ export default function AdminApp() {
       api("/api/admin/kv-outliers"),
       api("/api/admin/unresolved-kvs"),
       api("/api/admin/occupation-outliers"),
+      api("/api/admin/milestones"),
     ]);
     if (templateRes.ok) {
       const data = await templateRes.json();
@@ -597,6 +601,10 @@ export default function AdminApp() {
     if (outlierRes.ok) setOutlierGroups(await outlierRes.json());
     if (unresolvedRes.ok) setUnresolvedKvs(await unresolvedRes.json());
     if (occOutlierRes.ok) setOccOutlierGroups(await occOutlierRes.json());
+    if (milestonesRes.ok) {
+      const { milestones } = await milestonesRes.json();
+      setMilestonesInput((milestones || []).join(", "));
+    }
   }, [api, token]);
 
   const reloadCampaigns = useCallback(async () => {
@@ -955,6 +963,32 @@ export default function AdminApp() {
     } else {
       const data = await res.json().catch(() => ({}));
       setZoomSettingsStatus(data.error || "Fehler beim Speichern");
+    }
+  }
+
+  async function saveMilestones(e) {
+    e.preventDefault();
+    const parsed = milestonesInput
+      .split(/[\s,]+/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map(Number);
+    if (parsed.some((n) => !Number.isFinite(n) || n <= 0)) {
+      setMilestonesStatus("Nur positive Zahlen, mit Komma getrennt.");
+      return;
+    }
+    setMilestonesStatus("saving");
+    const res = await api("/api/admin/milestones", {
+      method: "POST",
+      body: JSON.stringify({ milestones: parsed }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      setMilestonesInput((data.milestones || []).join(", "));
+      setMilestonesStatus("ok");
+      setTimeout(() => setMilestonesStatus(null), 5000);
+    } else {
+      setMilestonesStatus(data.error || "Fehler beim Speichern");
     }
   }
 
@@ -1812,6 +1846,40 @@ export default function AdminApp() {
               <span>Newsletter</span>
               <strong>{stats.subscriberCount.toLocaleString("de-DE")}</strong>
             </div>
+            <form
+              className="admin-card"
+              style={{ gridColumn: "1 / -1" }}
+              onSubmit={saveMilestones}
+            >
+              <div className="admin-card-title">Meilensteine (Ziel)</div>
+              <p className="admin-muted" style={{ marginBottom: 8 }}>
+                Kommagetrennte Zielmarken für den Fortschrittsbalken. Die nächste
+                Marke oberhalb der aktuellen Unterschriftenzahl ist das Ziel.
+              </p>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <input
+                  type="text"
+                  value={milestonesInput}
+                  onChange={(e) => setMilestonesInput(e.target.value)}
+                  placeholder="1000, 1300, 1600, 2000"
+                  style={{ flex: 1, minWidth: 220 }}
+                  aria-label="Meilensteine, kommagetrennt"
+                />
+                <button type="submit" disabled={milestonesStatus === "saving"}>
+                  {milestonesStatus === "saving" ? "Speichern…" : "Speichern"}
+                </button>
+              </div>
+              {milestonesStatus === "ok" && (
+                <p className="admin-test-feedback admin-test-ok">Gespeichert</p>
+              )}
+              {milestonesStatus &&
+                !["ok", "saving"].includes(milestonesStatus) && (
+                  <p className="admin-test-feedback admin-test-error">
+                    {milestonesStatus}
+                  </p>
+                )}
+            </form>
+
             <div className="admin-card" style={{ gridColumn: "1 / -1" }}>
               <div className="admin-card-title">Bundesland-Zuordnung</div>
               {stateResolution && (

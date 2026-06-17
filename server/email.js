@@ -1,117 +1,126 @@
 import juice from "juice";
+import nodemailer from "nodemailer";
 import { getEmailTemplateBySlug, getNewsletterStats } from "./db.js";
+import cfg from "../config/letter.config.js";
 
-const resendApiKey = process.env.RESEND_API_KEY || "";
-const resendFrom =
-  process.env.RESEND_FROM ||
-  '"Gehaltsdeckel Initiative" <noreply@gehaltsdeckel.jetzt>';
-const resendEndpoint = "https://api.resend.com/emails";
-const resendBatchEndpoint = "https://api.resend.com/emails/batch";
-const transportSummary = `resend auth=${resendApiKey ? "yes" : "no"}`;
+// ---- Transport selection ---------------------------------------------------
+// The mail transport is chosen by the active letter config (email.provider),
+// overridable per-deployment via EMAIL_PROVIDER. Either "resend" (Resend HTTP
+// API) or "smtp" (any SMTP server via nodemailer). The *choice* and non-secret
+// SMTP connection details live in config; secrets (Resend API key, SMTP
+// password) live in env only.
 
-if (process.env.NODE_ENV === "production" && !resendApiKey) {
-  throw new Error("Production email requires RESEND_API_KEY");
+function envBool(value) {
+  if (value === undefined || value === "") return undefined;
+  return value === "true" || value === "1";
 }
 
-const fallbackTemplates = {
-  verification: {
-    subject: "Bitte bestätige deine Unterschrift — Gehaltsdeckel jetzt",
-    html_body: `
-      <p>Hallo {{name}},</p>
-      <p>Danke für deine Unterschrift unter den offenen Brief „Gehaltsdeckel jetzt".</p>
-      <p><a href="{{confirmUrl}}">Klicke hier, um deine E-Mail zu bestätigen</a></p>
-      <p>Der Link ist 24 Stunden gültig.</p>
-      <p>Mit solidarischen Grüßen<br>Initiative Gehaltsdeckel</p>
-    `,
-  },
-  already_signed: {
-    subject: "Du hast bereits unterschrieben — Gehaltsdeckel jetzt",
-    html_body: `
-      <p>Hallo {{name}},</p>
-      <p>deine Unterschrift unter den offenen Brief „Gehaltsdeckel jetzt" ist bereits bestätigt und wird gezählt.</p>
-      <p>Du musst nichts weiter tun – danke für deine Solidarität!</p>
-      <p>Möchtest du deine Angaben ändern (Name, Kreisverband, Beruf, Sichtbarkeit) oder dich abmelden? Hier kannst du deine Daten bearbeiten: <a href="{{unsubscribeUrl}}">{{unsubscribeUrl}}</a></p>
-      <p>Mit solidarischen Grüßen<br>Initiative Gehaltsdeckel</p>
-    `,
-  },
-  deletion: {
-    subject: "Deine Unterschrift löschen — Gehaltsdeckel jetzt",
-    html_body: `
-      <p>Hallo,</p>
-      <p>du hast die Löschung deiner Unterschrift und aller gespeicherten Daten angefordert.</p>
-      <p><a href="{{deleteUrl}}">Klicke hier, um deine Daten unwiderruflich zu löschen</a></p>
-      <p>Der Link ist 24 Stunden gültig. Wenn du diese Anfrage nicht gestellt hast, kannst du diese E-Mail ignorieren.</p>
-      <p>Mit solidarischen Grüßen<br>Initiative Gehaltsdeckel</p>
-    `,
-  },
-  zoom_confirmation: {
-    subject: "Du bist dabei — Zoom am {{eventLabel}} — Gehaltsdeckel jetzt",
-    html_body: `
-      <p>Hallo {{firstName}},</p>
-      <p>danke für deine Anmeldung zum Zoom-Treffen der Unterzeichner*innen am <strong>{{eventLabel}}</strong>.</p>
-      <p>Wir sprechen gemeinsam über die öffentliche Übergabe und eine Choreografie auf dem Parteitag und planen die nächsten Schritte.</p>
-      {{linkInfo}}
-      <p>Bis dann und mit solidarischen Grüßen<br>Initiative Gehaltsdeckel</p>
-    `,
-  },
-  zoom_link: {
-    subject: "Dein Zoom-Link für das Treffen am {{eventLabel}}",
-    html_body: `
-      <p>Hallo {{firstName}},</p>
-      <p>morgen ist es so weit — unser Zoom-Treffen am <strong>{{eventLabel}}</strong>. Hier ist dein Einwahllink:</p>
-      {{linkInfo}}
-      <p>Den passenden Kalendereintrag findest du im Anhang (.ics) oder über den Button oben.</p>
-      <p>Bis morgen und mit solidarischen Grüßen<br>Initiative Gehaltsdeckel</p>
-    `,
-  },
-  zoom_reminder: {
-    subject: "Gleich geht's los — Zoom-Treffen in 2 Stunden",
-    html_body: `
-      <p>Hallo {{firstName}},</p>
-      <p>kleine Erinnerung: In rund 2 Stunden startet unser Zoom-Treffen am <strong>{{eventLabel}}</strong>.</p>
-      {{linkInfo}}
-      <p>Wir freuen uns auf dich!<br>Initiative Gehaltsdeckel</p>
-    `,
-  },
-  zoom_newsletter_invite: {
-    subject:
-      "Bist du dabei? Zoom-Treffen am {{eventLabel}} — Gehaltsdeckel jetzt",
-    html_body: `
-      <p>Hallo {{firstName}},</p>
-      <p>wir planen unser erstes gemeinsames Zoom-Treffen am <strong>{{eventLabel}}</strong> und würden uns freuen, wenn du dabei bist.</p>
-      <p>In dem Treffen wollen wir gemeinsam die nächsten Schritte besprechen — die öffentliche Übergabe des Briefes, eine Choreografie auf dem Parteitag und mehr.</p>
-      <p><strong>Melde dich jetzt mit einem Klick an:</strong></p>
-      <p>
-        <a href="{{zoomJaUrl}}" style="display:inline-block;background:#ff0000;color:#ffffff;font-family:'Work Sans',Arial,sans-serif;font-weight:700;font-size:15px;text-decoration:none;padding:13px 22px;border:2px solid #6f003c;">Ja, ich bin dabei</a>
-      </p>
-      <p>
-        <a href="{{zoomJaDelegiertUrl}}" style="display:inline-block;background:#6f003c;color:#ffffff;font-family:'Work Sans',Arial,sans-serif;font-weight:700;font-size:15px;text-decoration:none;padding:13px 22px;border:2px solid #6f003c;">Ja, ich bin dabei und bin Delegierte*r</a>
-      </p>
-      <p>Deine Angaben (Name, Kreisverband) werden automatisch aus deiner Unterschrift übernommen — du musst nichts weiter ausfüllen.</p>
-      <p>Mit solidarischen Grüßen<br>Initiative Gehaltsdeckel</p>
-    `,
-  },
-};
+const provider = (
+  process.env.EMAIL_PROVIDER ||
+  cfg.email.provider ||
+  "resend"
+).toLowerCase();
+
+// Sender applies to both transports. RESEND_FROM kept for back-compat;
+// EMAIL_FROM is the neutral alias.
+const mailFrom =
+  process.env.EMAIL_FROM || process.env.RESEND_FROM || cfg.email.from;
+
+// Resend
+const resendApiKey = process.env.RESEND_API_KEY || "";
+const resendEndpoint = "https://api.resend.com/emails";
+const resendBatchEndpoint = "https://api.resend.com/emails/batch";
+
+// SMTP (host/port/secure may come from config; credentials only from env)
+const smtpCfg = cfg.email.smtp || {};
+const smtpHost = process.env.SMTP_HOST || smtpCfg.host || "";
+const smtpPort = Number(process.env.SMTP_PORT || smtpCfg.port || 587);
+const smtpSecure = envBool(process.env.SMTP_SECURE) ?? smtpCfg.secure ?? false;
+const smtpUser = process.env.SMTP_USER || "";
+const smtpPass = process.env.SMTP_PASS || "";
+
+const transportSummary =
+  provider === "smtp"
+    ? `smtp host=${smtpHost || "?"} auth=${smtpUser ? "yes" : "no"}`
+    : `resend auth=${resendApiKey ? "yes" : "no"}`;
+
+if (process.env.NODE_ENV === "production") {
+  if (provider === "resend" && !resendApiKey) {
+    throw new Error("Production email requires RESEND_API_KEY");
+  }
+  if (provider === "smtp" && !smtpHost) {
+    throw new Error("Production email with provider=smtp requires SMTP_HOST");
+  }
+}
+
+// ---- Send pacing -----------------------------------------------------------
+// Delays inserted between outbound sends to respect provider rate limits.
+// Configurable per letter via email.pacing, overridable via env. Read by the
+// mailing workers in server/index.js.
+const pacingCfg = cfg.email.pacing || {};
+function envInt(value) {
+  if (value === undefined || value === "") return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : undefined;
+}
+// Delay between individual one-by-one sends (e.g. the zoom link mailing).
+export const messageDelayMs =
+  envInt(process.env.EMAIL_MESSAGE_DELAY_MS) ?? pacingCfg.messageDelayMs ?? 550;
+// Delay between consecutive batch chunks (campaign + zoom reminder sends).
+export const batchDelayMs =
+  envInt(process.env.EMAIL_BATCH_DELAY_MS) ?? pacingCfg.batchDelayMs ?? 1000;
+
+// Lazily-created singleton SMTP transport.
+let smtpTransport = null;
+function getSmtpTransport() {
+  if (!smtpHost) {
+    throw new Error("SMTP_HOST (or email.smtp.host) is required to send email");
+  }
+  if (!smtpTransport) {
+    smtpTransport = nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpSecure,
+      ...(smtpUser && { auth: { user: smtpUser, pass: smtpPass } }),
+    });
+  }
+  return smtpTransport;
+}
+
+// Default templates come from the active letter config. Used as a fallback when
+// a template hasn't been seeded/edited in the DB (db/setup.js seeds the same set).
+const fallbackTemplates = Object.fromEntries(
+  Object.entries(cfg.email.templates).map(([slug, t]) => [
+    slug,
+    { subject: t.subject, html_body: t.htmlBody },
+  ]),
+);
+
+// Email colours/fonts come from the active letter theme. Inline styles use
+// single-quoted font names so they survive inside double-quoted style="" attrs.
+const ec = cfg.theme.colors;
+const emailDisplay = String(cfg.theme.fonts.display).replace(/"/g, "'");
+const emailBody = String(cfg.theme.fonts.body).replace(/"/g, "'");
 
 // Email-safe "Zum Kalender hinzufügen" button (inline styles, no border-radius).
 export function zoomCalendarButton(icsUrl) {
-  return `<p><a href="${icsUrl}" style="display:inline-block;background:#ff0000;color:#ffffff;font-family:'Work Sans',Arial,sans-serif;font-weight:700;font-size:15px;text-decoration:none;padding:13px 22px;border:2px solid #6f003c;">Zum Kalender hinzufügen</a></p>`;
+  return `<p><a href="${icsUrl}" style="display:inline-block;background:${ec.rot};color:${ec.weiss};font-family:${emailDisplay};font-weight:700;font-size:15px;text-decoration:none;padding:13px 22px;border:2px solid ${ec.akzent};">Zum Kalender hinzufügen</a></p>`;
 }
 
 const emailCss = `
-  body { margin: 0; padding: 24px; background: #ffffff; color: #6f003c; font-family: Inter, Arial, sans-serif; }
-  .email-shell { max-width: 600px; margin: 0 auto; background: #f4f1ec; border: 1px solid #6f003c; padding: 36px; }
-  h1, h2, h3 { font-family: "Work Sans", Arial, sans-serif; color: #6f003c; line-height: 1.08; margin: 0 0 16px; }
+  body { margin: 0; padding: 24px; background: ${ec.weiss}; color: ${ec.akzent}; font-family: ${emailBody}; }
+  .email-shell { max-width: 600px; margin: 0 auto; background: ${ec.fond}; border: 1px solid ${ec.akzent}; padding: 36px; }
+  h1, h2, h3 { font-family: ${emailDisplay}; color: ${ec.akzent}; line-height: 1.08; margin: 0 0 16px; }
   h1 { font-size: 34px; font-weight: 900; }
   h2 { font-size: 28px; font-weight: 900; }
   h3 { font-size: 22px; font-weight: 700; }
-  p { font-size: 16px; line-height: 1.6; margin: 0 0 16px; color: #6f003c; }
-  a { color: #ff0000; font-weight: 700; }
-  blockquote, .pullquote { border-left: 5px solid #ff0000; margin: 28px 0; padding: 8px 0 8px 18px; font-family: "Work Sans", Arial, sans-serif; font-size: 22px; line-height: 1.25; }
-  .anrede { font-family: "Work Sans", Arial, sans-serif; font-size: 22px; font-weight: 300; }
-  .gruss { font-family: "Work Sans", Arial, sans-serif; font-weight: 700; margin-top: 28px; }
-  .signers-line { color: #6b6b6b; font-family: "Work Sans", Arial, sans-serif; }
-  footer { border-top: 1px solid #6f003c; color: #6b6b6b; font-size: 13px; line-height: 1.5; margin-top: 28px; padding-top: 16px; }
+  p { font-size: 16px; line-height: 1.6; margin: 0 0 16px; color: ${ec.akzent}; }
+  a { color: ${ec.rot}; font-weight: 700; }
+  blockquote, .pullquote { border-left: 5px solid ${ec.rot}; margin: 28px 0; padding: 8px 0 8px 18px; font-family: ${emailDisplay}; font-size: 22px; line-height: 1.25; }
+  .anrede { font-family: ${emailDisplay}; font-size: 22px; font-weight: 300; }
+  .gruss { font-family: ${emailDisplay}; font-weight: 700; margin-top: 28px; }
+  .signers-line { color: ${ec.grau}; font-family: ${emailDisplay}; }
+  footer { border-top: 1px solid ${ec.akzent}; color: ${ec.grau}; font-size: 13px; line-height: 1.5; margin-top: 28px; padding-top: 16px; }
 `;
 
 function escapeHtml(str) {
@@ -192,18 +201,23 @@ export function buildUnsubscribeHeaders(optOutUrl) {
   };
 }
 
-export async function sendRenderedEmail({
-  to,
-  subject,
-  html,
-  headers,
-  attachments,
-}) {
-  const toDomain = getEmailDomain(to);
+export async function sendRenderedEmail(payload) {
+  const toDomain = getEmailDomain(payload.to);
   console.log(
-    `[email] sending via=${transportSummary} toDomain=${toDomain} subject="${subject}"`,
+    `[email] sending via=${transportSummary} toDomain=${toDomain} subject="${payload.subject}"`,
   );
 
+  const messageId =
+    provider === "smtp"
+      ? await sendViaSmtp(payload)
+      : await sendViaResend(payload);
+
+  console.log(
+    `[email] sent via=${transportSummary} toDomain=${toDomain} messageId=${messageId || ""}`,
+  );
+}
+
+async function sendViaResend({ to, subject, html, headers, attachments }) {
   if (!resendApiKey) {
     throw new Error("RESEND_API_KEY is required to send email");
   }
@@ -215,7 +229,7 @@ export async function sendRenderedEmail({
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: resendFrom,
+      from: mailFrom,
       to,
       subject,
       html,
@@ -231,18 +245,46 @@ export async function sendRenderedEmail({
     throw new Error(`Resend email failed: ${response.status} ${message}`);
   }
 
-  console.log(
-    `[email] sent via=${transportSummary} toDomain=${toDomain} messageId=${result.id || ""}`,
-  );
+  return result.id || "";
+}
+
+// Map a Resend-shaped attachment ({ filename, content: base64, content_type })
+// to nodemailer's shape ({ filename, content: Buffer, contentType }).
+function toNodemailerAttachments(attachments) {
+  return attachments.map((a) => ({
+    filename: a.filename,
+    content: Buffer.from(a.content, "base64"),
+    ...(a.content_type && { contentType: a.content_type }),
+  }));
+}
+
+async function sendViaSmtp({ to, subject, html, headers, attachments }) {
+  const transport = getSmtpTransport();
+  const info = await transport.sendMail({
+    from: mailFrom,
+    to,
+    subject,
+    html,
+    text: htmlToText(html),
+    ...(headers && { headers }),
+    ...(attachments && { attachments: toNodemailerAttachments(attachments) }),
+  });
+  return info.messageId || "";
 }
 
 export async function sendBatchEmails(emails, idempotencyKey = null) {
+  return provider === "smtp"
+    ? sendBatchViaSmtp(emails, idempotencyKey)
+    : sendBatchViaResend(emails, idempotencyKey);
+}
+
+async function sendBatchViaResend(emails, idempotencyKey = null) {
   if (!resendApiKey) {
     throw new Error("RESEND_API_KEY is required to send email");
   }
 
   const payload = emails.map((e) => ({
-    from: resendFrom,
+    from: mailFrom,
     to: e.to,
     subject: e.subject,
     html: e.html,
@@ -292,6 +334,27 @@ export async function sendBatchEmails(emails, idempotencyKey = null) {
     const message = result?.message || result?.error || response.statusText;
     throw new Error(`Resend batch failed: ${response.status} ${message}`);
   }
+}
+
+// SMTP has no batch endpoint — send each message individually. The
+// idempotencyKey is logged for traceability but has no SMTP equivalent.
+async function sendBatchViaSmtp(emails, idempotencyKey = null) {
+  console.log(
+    `[email] batch sending ${emails.length} emails via=${transportSummary}${
+      idempotencyKey ? ` key=${idempotencyKey}` : ""
+    }`,
+  );
+
+  const ids = [];
+  for (const e of emails) {
+    const messageId = await sendViaSmtp(e);
+    ids.push(messageId);
+  }
+
+  console.log(
+    `[email] batch sent ${emails.length} emails via=${transportSummary} ids=${ids.join(", ")}`,
+  );
+  return { data: ids.map((id) => ({ id })) };
 }
 
 export async function sendDeletionEmail({

@@ -10,6 +10,7 @@
 //     is reimplemented in JS (`fuzzyMatch`), since bun:sqlite has no custom
 //     SQL functions.
 import { db, nowIso, isoAgo } from "../db/connection.js";
+import cfg from "../config/letter.config.js";
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -565,6 +566,43 @@ export async function setZoomSettings(partial) {
   }
 }
 
+// ---- milestones (admin-editable goal thresholds) ---------------------------
+// Stored as a JSON array under app_settings.milestones; seeded from the active
+// letter config (cfg.hero.milestones) when unset.
+
+function sanitizeMilestones(arr) {
+  return [
+    ...new Set(
+      (Array.isArray(arr) ? arr : [])
+        .map((n) => Math.round(Number(n)))
+        .filter((n) => Number.isFinite(n) && n > 0),
+    ),
+  ].sort((a, b) => a - b);
+}
+
+export async function getMilestones() {
+  const row = db
+    .query(`SELECT value FROM app_settings WHERE key = 'milestones'`)
+    .get();
+  if (row?.value) {
+    try {
+      const arr = sanitizeMilestones(JSON.parse(row.value));
+      if (arr.length) return arr;
+    } catch {}
+  }
+  return cfg.hero.milestones;
+}
+
+export async function setMilestones(arr) {
+  const clean = sanitizeMilestones(arr);
+  if (!clean.length) throw new Error("milestones must be positive integers");
+  db.query(
+    `INSERT INTO app_settings (key, value, updated_at) VALUES ('milestones', ?, ?)
+     ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = ?`,
+  ).run(JSON.stringify(clean), nowIso(), nowIso());
+  return clean;
+}
+
 // ---- email templates -------------------------------------------------------
 
 const SYSTEM_SLUGS_SQL =
@@ -932,10 +970,10 @@ export async function getUnifiedUnsubscribeState(token, source) {
     name: signer?.name ?? "",
     kreisverband: signer?.kreisverband ?? "",
     occupation: signer?.occupation ?? "",
-    showPublicly: signer?.show_publicly ?? true,
+    showPublicly: Boolean(signer?.show_publicly ?? true),
     zoomName: zoom?.name ?? "",
     zoomKv: zoom?.kreisverband ?? "",
-    delegierter: zoom?.delegierter ?? false,
+    delegierter: Boolean(zoom?.delegierter ?? false),
   };
 }
 
@@ -947,17 +985,27 @@ export async function updateSignerByEmail(
   email,
   { name, kreisverband, occupation, newsletter, showPublicly },
 ) {
-  const [row] = await sql`
-    UPDATE signers SET
-      name = ${name},
-      kreisverband = ${kreisverband},
-      occupation = ${occupation},
-      newsletter = ${newsletter},
-      show_publicly = ${showPublicly},
-      state = CASE WHEN kreisverband IS DISTINCT FROM ${kreisverband} THEN '' ELSE state END
-    WHERE email = ${email}
-    RETURNING id
-  `;
+  const row = db
+    .query(
+      `UPDATE signers SET
+        name = ?,
+        kreisverband = ?,
+        occupation = ?,
+        newsletter = ?,
+        show_publicly = ?,
+        state = CASE WHEN kreisverband IS NOT ? THEN '' ELSE state END
+      WHERE email = ?
+      RETURNING id`,
+    )
+    .get(
+      name,
+      kreisverband,
+      occupation,
+      B(newsletter),
+      B(showPublicly),
+      kreisverband,
+      email,
+    );
   return Boolean(row);
 }
 
@@ -965,14 +1013,16 @@ export async function updateZoomByEmail(
   email,
   { name, kreisverband, delegierter },
 ) {
-  const [row] = await sql`
-    UPDATE zoom_registrations SET
-      name = ${name},
-      kreisverband = ${kreisverband},
-      delegierter = ${delegierter}
-    WHERE email = ${email}
-    RETURNING id
-  `;
+  const row = db
+    .query(
+      `UPDATE zoom_registrations SET
+        name = ?,
+        kreisverband = ?,
+        delegierter = ?
+      WHERE email = ?
+      RETURNING id`,
+    )
+    .get(name, kreisverband, B(delegierter), email);
   return Boolean(row);
 }
 

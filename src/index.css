@@ -30,6 +30,12 @@
   --shadow-md: 10px;
   --shadow-ml: 12px;
   --shadow-lg: 14px;
+  /* Themeable tokens — overridden per letter from config (see config/theme-css.js). */
+  --font-display: "Work Sans", Arial, sans-serif;
+  --font-body: "Inter", system-ui, sans-serif;
+  --shadow-offset: var(--shadow-offset);
+  --radius: 0;
+  --border-width: 2px;
 }
 
 * {
@@ -53,7 +59,7 @@ body {
   padding: 0;
   background: var(--weiss);
   color: var(--akzent);
-  font-family: "Inter", system-ui, sans-serif;
+  font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -76,7 +82,7 @@ button {
 }
 
 .work {
-  font-family: "Work Sans", "Inter", sans-serif;
+  font-family: var(--font-display);
 }
 .mono {
   font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
@@ -128,7 +134,7 @@ button {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 900;
   font-size: 18px;
   letter-spacing: var(--ls-body);
@@ -170,7 +176,7 @@ button {
   font-weight: 700;
   font-size: 14px;
   cursor: pointer;
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   letter-spacing: var(--ls-body);
 }
 
@@ -251,7 +257,7 @@ button {
   .mobile-nav a {
     display: block;
     padding: 16px 24px;
-    font-family: "Work Sans";
+    font-family: var(--font-display);
     font-weight: 700;
     font-size: 16px;
     color: var(--weiss);
@@ -320,7 +326,7 @@ button {
   background: var(--rot);
   color: var(--weiss);
   padding: 6px 12px;
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 700;
   font-size: 13px;
   letter-spacing: var(--ls-body);
@@ -349,7 +355,7 @@ button {
 }
 
 h1.headline {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 900;
   font-size: clamp(56px, 9vw, 144px);
   line-height: 0.92;
@@ -376,7 +382,7 @@ h1.headline .banner {
 }
 
 .sub {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 300;
   font-size: clamp(20px, 2.2vw, 28px);
   line-height: 1.25;
@@ -427,7 +433,7 @@ h1.headline .banner {
 }
 
 .counter-card .label {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 700;
   font-size: 12px;
   letter-spacing: var(--ls-caps);
@@ -436,7 +442,7 @@ h1.headline .banner {
 }
 
 .counter-card .num {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 900;
   font-size: clamp(48px, 13vw, 72px);
   line-height: 0.95;
@@ -485,7 +491,7 @@ h1.headline .banner {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 700;
   font-size: 14px;
   color: var(--akzent);
@@ -536,7 +542,7 @@ h1.headline .banner {
   cursor: pointer;
   transform: rotate(4deg) translateZ(0);
   box-shadow: 8px 8px 0 var(--akzent);
-  font-family: "Work Sans", "Inter", sans-serif;
+  font-family: var(--font-display);
   transition:
     transform 0.18s ease,
     box-shadow 0.18s ease;
@@ -560,7 +566,7 @@ h1.headline .banner {
 }
 
 .stoerer-body {
-  font-family: "Inter", sans-serif;
+  font-family: var(--font-body);
   font-size: 13px;
   line-height: 1.42;
 }
@@ -589,13 +595,13 @@ h1.headline .banner {
 
 /* ---------- Zoom-Sektion ---------- */
 .zoom-when {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   color: var(--rot-text);
   margin-bottom: 8px;
 }
 
 .zoom-count {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   margin-top: 4px;
 }
 
@@ -628,7 +634,7 @@ h1.headline .banner {
 }
 
 .section-head .num {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 900;
   font-size: 14px;
   color: var(--rot-text);
@@ -636,7 +642,7 @@ h1.headline .banner {
 }
 
 .section-head h2 {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 900;
   font-size: clamp(34px, 4.2vw, 56px);
   margin: 0;
@@ -663,7 +669,7 @@ h1.headline .banner {
 }
 
 .brief-meta dt {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 700;
   font-size: 11px;
   letter-spacing: var(--ls-caps);
@@ -706,7 +712,7 @@ h1.headline .banner {
 }
 
 .brief-paper h2 {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 900;
   font-size: clamp(28px, 3vw, 40px);
   margin: 0 0 8px;
@@ -715,7 +721,7 @@ h1.headline .banner {
 }
 
 .brief-paper .anrede {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 300;
   font-size: clamp(20px, 2vw, 26px);
   margin: 0 0 36px;
@@ -734,7 +740,7 @@ h1.headline .banner {
 }
 
 .brief-paper p.lead::first-letter {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 900;
   font-size: 42px;
   line-height: 0.85;
@@ -744,14 +750,14 @@ h1.headline .banner {
 }
 
 .brief-paper .gruss {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 700;
   font-size: 18px;
   margin-top: 36px;
 }
 
 .brief-paper .signers-line {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 300;
   font-size: 15px;
   color: var(--grau);
@@ -762,7 +768,7 @@ h1.headline .banner {
   border-left: 5px solid var(--rot);
   margin: 32px 0;
   padding: 6px 0 6px 22px;
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 300;
   font-size: 24px;
   line-height: 1.25;
@@ -790,7 +796,7 @@ h1.headline .banner {
 
 .faq-aside .num {
   display: block;
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 900;
   font-size: 14px;
   color: var(--rot-text);
@@ -799,7 +805,7 @@ h1.headline .banner {
 }
 
 .faq-aside h2 {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 900;
   font-size: clamp(34px, 4vw, 56px);
   line-height: 0.92;
@@ -858,7 +864,7 @@ h1.headline .banner {
   gap: 18px;
   padding: 20px 24px;
   cursor: pointer;
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 700;
   font-size: 18px;
   line-height: 1.3;
@@ -885,7 +891,7 @@ h1.headline .banner {
 .faq-q::after {
   content: "+";
   flex: none;
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 900;
   font-size: 24px;
   line-height: 1;
@@ -937,7 +943,7 @@ h1.headline .banner {
 }
 
 .faq-answer h4 {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 700;
   font-size: 12px;
   letter-spacing: var(--ls-caps);
@@ -961,7 +967,7 @@ h1.headline .banner {
 }
 
 .faq-calc-title {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 700;
   font-size: 13px;
   letter-spacing: var(--ls-caps);
@@ -1004,7 +1010,7 @@ h1.headline .banner {
   border-top: 2px solid var(--akzent);
   margin-top: 6px;
   padding-top: 12px;
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 700;
 }
 
@@ -1071,7 +1077,7 @@ h1.headline .banner {
 }
 
 .demands h2 {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 900;
   font-size: clamp(34px, 4.2vw, 56px);
   margin: 0 0 40px;
@@ -1108,7 +1114,7 @@ h1.headline .banner {
 }
 
 .demand .n {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 900;
   font-size: 14px;
   color: var(--rot-text);
@@ -1116,7 +1122,7 @@ h1.headline .banner {
 }
 
 .demand h4 {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 900;
   font-size: 24px;
   margin: 0;
@@ -1150,7 +1156,7 @@ h1.headline .banner {
 }
 
 .sign-intro h2 {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 900;
   font-size: clamp(40px, 5vw, 72px);
   line-height: 0.92;
@@ -1163,7 +1169,7 @@ h1.headline .banner {
 }
 
 .sign-intro .lead {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 300;
   font-size: 22px;
   line-height: 1.25;
@@ -1224,7 +1230,7 @@ h1.headline .banner {
   left: 24px;
   background: var(--akzent);
   color: var(--weiss);
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 700;
   font-size: 12px;
   letter-spacing: var(--ls-caps);
@@ -1233,7 +1239,7 @@ h1.headline .banner {
 }
 
 .form-card h3 {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 900;
   font-size: 28px;
   margin: 8px 0 6px;
@@ -1257,7 +1263,7 @@ h1.headline .banner {
 
 .field label {
   display: block;
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 700;
   font-size: 12px;
   letter-spacing: var(--ls-wide);
@@ -1279,7 +1285,7 @@ h1.headline .banner {
   width: 100%;
   padding: 14px;
   font-size: 15px;
-  font-family: "Inter", sans-serif;
+  font-family: var(--font-body);
   background: var(--weiss);
   border: 1.5px solid var(--akzent);
   outline: none;
@@ -1369,7 +1375,7 @@ h1.headline .banner {
   color: var(--weiss);
   border: 1.5px solid var(--akzent);
   padding: 18px;
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 900;
   font-size: 18px;
   letter-spacing: var(--ls-body);
@@ -1467,7 +1473,7 @@ h1.headline .banner {
 }
 
 .modal-head h3 {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 900;
   font-size: 22px;
   margin: 0;
@@ -1514,7 +1520,7 @@ h1.headline .banner {
 }
 
 .modal-body .success-title {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 900;
   font-size: 22px;
   margin: 0 0 8px;
@@ -1554,7 +1560,7 @@ h1.headline .banner {
   background: var(--akzent);
   color: var(--weiss);
   border: 1.5px solid var(--akzent);
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 900;
   font-size: 16px;
   cursor: pointer;
@@ -1587,7 +1593,7 @@ h1.headline .banner {
   background: transparent;
   color: var(--akzent);
   border: 1.5px solid var(--akzent);
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 700;
   font-size: 14px;
   cursor: pointer;
@@ -1660,7 +1666,7 @@ h1.headline .banner {
 }
 
 .signers-head h2 {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 900;
   font-size: clamp(34px, 4.2vw, 56px);
   margin: 0;
@@ -1669,7 +1675,7 @@ h1.headline .banner {
 }
 
 .signers-head .total {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 300;
   font-size: 22px;
   color: var(--grau);
@@ -1702,7 +1708,7 @@ h1.headline .banner {
 }
 
 .stat .v {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 900;
   font-size: 36px;
   line-height: 1;
@@ -1710,7 +1716,7 @@ h1.headline .banner {
 }
 
 .stat .k {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 700;
   font-size: 11px;
   letter-spacing: var(--ls-wide);
@@ -1732,7 +1738,7 @@ h1.headline .banner {
   color: var(--akzent);
   padding: 8px 14px;
   min-height: 44px;
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 700;
   font-size: 13px;
   cursor: pointer;
@@ -1759,7 +1765,7 @@ h1.headline .banner {
   min-width: 200px;
   padding: 8px 14px;
   border: 1.5px solid var(--akzent);
-  font-family: "Inter", sans-serif;
+  font-family: var(--font-body);
   font-size: 14px;
   background: var(--weiss);
   outline: none;
@@ -1842,7 +1848,7 @@ h1.headline .banner {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 900;
   font-size: 14px;
   flex-shrink: 0;
@@ -1854,7 +1860,7 @@ h1.headline .banner {
 }
 
 .signer .name {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 700;
   font-size: 15px;
   line-height: 1.2;
@@ -1875,7 +1881,7 @@ h1.headline .banner {
 .signer .time {
   font-size: 11px;
   color: var(--grau);
-  font-family: "Work Sans", sans-serif;
+  font-family: var(--font-display);
   font-weight: 300;
   flex-shrink: 0;
 }
@@ -1895,7 +1901,7 @@ h1.headline .banner {
   color: var(--akzent);
   padding: 10px 18px;
   min-height: 44px;
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 700;
   font-size: 13px;
   cursor: pointer;
@@ -1908,7 +1914,7 @@ h1.headline .banner {
 
 /* ---------- Section number ---------- */
 .section-num {
-  font-family: "Work Sans", "Inter", sans-serif;
+  font-family: var(--font-display);
   font-weight: 900;
   font-size: 14px;
   color: var(--rot-text);
@@ -1956,12 +1962,12 @@ h1.headline .banner {
 }
 
 .occupation-name {
-  font-family: "Work Sans", sans-serif;
+  font-family: var(--font-display);
   font-weight: 700;
 }
 
 .occupation-count {
-  font-family: "Work Sans", sans-serif;
+  font-family: var(--font-display);
   font-weight: 900;
   font-size: 12px;
   background: var(--akzent);
@@ -2108,7 +2114,7 @@ h1.headline .banner {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-family: "Work Sans", sans-serif;
+  font-family: var(--font-display);
   font-weight: 900;
   font-size: 13px;
   letter-spacing: var(--ls-body);
@@ -2213,7 +2219,7 @@ footer {
 }
 
 .footer-top h3 {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 900;
   font-size: 18px;
   margin: 0 0 14px;
@@ -2260,7 +2266,7 @@ footer {
   display: inline-block;
   background: var(--rot);
   color: var(--weiss);
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 700;
   font-size: 10px;
   padding: 2px 6px;
@@ -2443,7 +2449,7 @@ footer {
 
 .admin-login h1,
 .form-card h1 {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-size: clamp(32px, 5vw, 48px);
   line-height: 1;
   margin: 12px 0 8px;
@@ -2490,7 +2496,7 @@ footer {
 }
 
 .admin-card-title {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-size: 20px;
   font-weight: 900;
   margin-bottom: 16px;
@@ -2517,7 +2523,7 @@ footer {
 }
 
 .admin-table th {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 700;
   font-size: 12px;
   letter-spacing: var(--ls-wide);
@@ -2532,7 +2538,7 @@ footer {
 
 .admin-card label {
   display: block;
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: var(--ls-wide);
@@ -2570,7 +2576,7 @@ footer {
   border: 1px solid var(--akzent);
   color: var(--weiss);
   cursor: pointer;
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 900;
   min-height: 44px;
   padding: 10px 16px;
@@ -2651,7 +2657,7 @@ footer {
   border: 1px solid var(--akzent);
   color: var(--akzent);
   cursor: pointer;
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 700;
   min-height: 36px;
   min-width: 36px;
@@ -2672,7 +2678,7 @@ footer {
 }
 .link-input-row input {
   flex: 1;
-  font-family: "Work Sans", sans-serif;
+  font-family: var(--font-display);
   font-size: 14px;
   padding: 5px 10px;
   border: 1.5px solid var(--akzent);
@@ -2680,7 +2686,7 @@ footer {
   color: var(--akzent);
 }
 .link-input-row button {
-  font-family: "Work Sans", sans-serif;
+  font-family: var(--font-display);
   font-weight: 700;
   font-size: 13px;
   padding: 5px 12px;
@@ -2703,7 +2709,7 @@ footer {
 }
 
 .admin-editor-surface .ProseMirror {
-  font-family: "Work Sans", "Inter", sans-serif;
+  font-family: var(--font-display);
   min-height: 380px;
   outline: none;
 }
@@ -2739,7 +2745,7 @@ footer {
   border: 1px solid var(--fehler);
   color: var(--weiss);
   cursor: pointer;
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 800;
   min-height: 44px;
   padding: 10px 16px;
@@ -2852,7 +2858,7 @@ footer {
   --rdp-day-width: 36px;
   --rdp-day_button-height: 32px;
   --rdp-day_button-width: 32px;
-  --rdp-day_button-border-radius: 0;
+  --rdp-day_button-border-radius: var(--radius);
   --rdp-day_button-border: 1.5px solid transparent;
   --rdp-selected-border: none;
   --rdp-nav_button-width: 30px;
@@ -2861,7 +2867,7 @@ footer {
   --rdp-weekday-opacity: 1;
   --rdp-outside-opacity: 0.35;
   margin: 0;
-  font-family: Inter, sans-serif;
+  font-family: var(--font-body);
   font-size: 13px;
   color: var(--akzent);
 }
@@ -2883,7 +2889,7 @@ footer {
 
 /* Month heading */
 .rdp-month_caption {
-  font-family: "Work Sans", sans-serif;
+  font-family: var(--font-display);
   font-weight: 900;
   font-size: 14px;
   letter-spacing: var(--ls-wide);
@@ -2926,7 +2932,7 @@ footer {
 
 /* Day button base — explicit overrides beat library defaults */
 .rdp-root .rdp-day_button {
-  border-radius: 0;
+  border-radius: var(--radius);
   border: 1.5px solid transparent;
   font-size: 13px;
   font-weight: 500;
@@ -2987,7 +2993,7 @@ footer {
   border: 1.5px solid var(--akzent);
   background: var(--akzent);
   color: var(--weiss);
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 900;
   cursor: pointer;
   transition:
@@ -3066,7 +3072,7 @@ footer {
 
 .admin-status {
   border: 1px solid var(--akzent);
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-size: 12px;
   font-weight: 900;
   padding: 5px 9px;
@@ -3108,7 +3114,7 @@ footer {
 }
 
 .stat-card strong {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-size: clamp(36px, 6vw, 68px);
   line-height: 0.95;
 }
@@ -3323,7 +3329,7 @@ footer {
 }
 
 .modal-legal-body h4 {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 900;
   font-size: 16px;
   margin: 0 0 16px;
@@ -3331,7 +3337,7 @@ footer {
 }
 
 .modal-legal-body h5 {
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 700;
   font-size: 12px;
   margin: 22px 0 8px;
@@ -3382,7 +3388,7 @@ footer {
   background: var(--akzent);
   color: var(--weiss);
   border: 1.5px solid var(--akzent);
-  font-family: "Work Sans";
+  font-family: var(--font-display);
   font-weight: 700;
   font-size: 14px;
   cursor: pointer;

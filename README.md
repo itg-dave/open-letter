@@ -1,6 +1,46 @@
-# Diätendeckel jetzt
+# Open Letter Platform
 
-Campaign landing page for an open letter by the base of Die Linke demanding caps on parliamentary salaries. Collects verified signatures with email confirmation and displays them publicly.
+A **config-driven open-letter / signature-collection platform** — fork it per campaign. It collects verified signatures with email confirmation and displays them publicly, with a live goal counter, an admin dashboard, transactional + newsletter email, and optional regional (German-state) and event (Zoom) modules.
+
+Everything campaign-specific — branding, theme (colours/fonts), the letter text, FAQ, legal entity, emails, and which optional features are on — lives in a single config per letter under [`config/letters/`](config/letters). One deployment serves one letter, selected by the `LETTER_CONFIG` env var.
+
+The reference/example campaign that ships in this repo is **"Gehaltsdeckel jetzt"** (`config/letters/gehaltsdeckel/`): an open letter by the base of Die Linke demanding caps on parliamentary salaries. A minimal, English, feature-stripped starter lives in `config/letters/example/`.
+
+## Launch a new open letter
+
+1. **Copy a letter config:** `cp -r config/letters/example config/letters/my-letter` (start from `example`, or from `gehaltsdeckel` for the full feature set).
+2. **Edit `config/letters/my-letter/index.js`** — `brand`, `meta` (title/OG/canonical/analytics), `theme` (`colors`, `fonts`, `style`), `hero` (+ seed `milestones`), `nav`, `list`, `sign` (criteria, privacy, field labels), `footer`, `legal`, `email` (`from`, `signoff`, `templates`), and `features` (which optional modules are on).
+3. **Edit `config/letters/my-letter/content.jsx`** — the rich page content: `LetterArticle` (the letter itself) and `FaqContent` (the FAQ).
+4. **Register it** in `config/letter.config.js` and `config/content.jsx` (add it to the `LETTERS` / `CONTENT` maps).
+5. **Add assets** to `public/` (`og.png`, favicon, etc.) — regenerate the OG image with `bun run og` once the site runs.
+6. **Set env:** `LETTER_CONFIG=my-letter`, plus `BASE_URL`, `RESEND_*`, and the required secrets (see below).
+7. **`bun run db:setup`** (seeds the config's email templates) and deploy.
+
+No application code changes are needed — content, branding, theme and feature flags are all config.
+
+### Config schema (per letter)
+
+| Key | What it controls |
+| --- | --- |
+| `brand` | `name`, `wordmark`, `lang`, `locale` |
+| `theme` | `colors` (palette → CSS variables), `fonts` (`display`/`body`), `style` (`shadowOffset`, `radius`, `borderWidth`) — drives the page, emails, and generated images |
+| `meta` | `<head>`: title, description, canonical, OG/Twitter, favicon, JSON-LD `schemaAbout`, optional `analytics` `{src, websiteId}` |
+| `hero` | headline lines, CTA labels, counter/goal labels, seed `milestones` |
+| `nav` / `navCta` / `list` | nav items, top-bar CTA, signer-list heading |
+| `sign` | section heading, `criteria`, `privacyNote`, form copy, and `fields` (labels/placeholders for the two optional `kreisverband`/`occupation` columns) |
+| `footer` / `legal` | footer blurb + contact; Impressum/Datenschutz responsible entity, address, contact, disclaimer |
+| `email` | `from`, `signoff`, `provider` (`resend`/`smtp`) + `smtp` connection details, `pacing` (rate-limit delays), and the `templates` map (seeded into the DB, admin-editable) |
+| `features` | `kreisverbandField`, `occupationField`, `germanyMap`, `stateResolution`, `zoomEvent` — toggle the optional modules |
+| `zoom` | event label/date/duration (only read when `features.zoomEvent`) |
+
+The rich letter body and FAQ are React components in the sibling `content.jsx`.
+
+### Admin-editable settings
+
+The admin dashboard (served at the secret `/${ADMIN_PATH}` route) can edit, at runtime without redeploying:
+
+- **Milestones** (Einstellungen tab) — the goal thresholds for the progress bar; seeded from `hero.milestones`, stored in `app_settings`, served via `/api/stats`.
+- **Email templates** and **campaigns**; and the **Zoom event** settings when that module is enabled.
 
 ## Stack
 
@@ -9,14 +49,23 @@ Campaign landing page for an open letter by the base of Die Linke demanding caps
 - **Backend**: `Bun.serve()` with route handlers
 - **Database**: SQLite via Bun's built-in `bun:sqlite`, **encrypted at rest with [SQLCipher](https://www.zetetic.net/sqlcipher/)** (loaded through `Database.setCustomSQLite`)
 - **Jobs**: [Honker](https://honker.dev) durable queues + cron scheduler (campaign sends, zoom mailings, backups, state resolution) — persisted inside the same SQLite file
-- **Email**: Resend HTTP API for transactional mail
+- **Email**: Resend HTTP API or any SMTP server (nodemailer) for transactional mail
 
 ## Project Structure
 
 ```
 diaetendeckel/
 ├── package.json
-├── index.html                 # HTML entry (Bun auto-bundles JS + CSS)
+├── index.template.html        # HTML shell with a {{HEAD}} placeholder
+├── index.generated.html       # Generated at startup from the active letter (gitignored)
+├── config/                    # Per-letter config — the only place campaigns differ
+│   ├── letter.config.js       # Selects the active letter's data by LETTER_CONFIG
+│   ├── content.jsx            # Selects the active letter's rich JSX (letter + FAQ)
+│   ├── theme-css.js           # Builds :root CSS-variable overrides from theme
+│   ├── html.js                # Renders <head> from meta (title/OG/JSON-LD/analytics)
+│   └── letters/
+│       ├── gehaltsdeckel/     # Reference campaign (index.js + content.jsx)
+│       └── example/           # Minimal English starter (features off)
 ├── .env.example
 ├── .gitignore
 ├── Dockerfile                 # Production multi-stage build
@@ -35,12 +84,14 @@ diaetendeckel/
 ├── server/
 │   ├── index.js               # Bun.serve() — routes + security headers
 │   ├── db.js                  # Parameterized bun:sqlite queries
-│   ├── email.js               # Email templates + Resend transport
+│   ├── email.js               # Email templates + Resend/SMTP transport
 │   └── ratelimit.js           # In-memory sliding window rate limiter
-└── src/
-    ├── main.jsx               # React entry point
-    ├── App.jsx                # Full SPA — all sections + modals
-    └── index.css              # All styles + responsive breakpoints
+├── src/
+│   ├── main.jsx               # React entry point
+│   ├── App.jsx                # Full SPA — all sections + modals
+│   └── index.css              # All styles + responsive breakpoints
+└── vendor/
+    └── libhonker_ext.dylib    # Prebuilt Honker extension (macOS arm64) for local dev
 ```
 
 ## Quick Start (local)
@@ -80,6 +131,7 @@ This creates the encrypted SQLite database, seeds 200 verified signers, trickles
 
 | Variable           | Required   | Default                 | Description                                                                                                           |
 | ------------------ | ---------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `LETTER_CONFIG`    | No         | `gehaltsdeckel`         | Which open letter to serve — a directory name under `config/letters/`                                                |
 | `DATABASE_PATH`    | No         | `./data/diaetendeckel.db` | Path to the encrypted SQLite database file                                                                          |
 | `DATABASE_ENCRYPTION_KEY` | Yes | —                       | SQLCipher passphrase. The app fails closed (won't start) without it.                                                 |
 | `SQLCIPHER_LIB`    | No         | platform default        | Path to `libsqlcipher` (`.dylib`/`.so`) loaded via `setCustomSQLite`                                                 |
@@ -91,8 +143,17 @@ This creates the encrypted SQLite database, seeds 200 verified signers, trickles
 | `ADMIN_PATH`       | Yes        | —                       | Secret single-segment admin path, without leading or trailing slashes. Use `my-secret-panel`, not `/my-secret-panel`. |
 | `ADMIN_PASSWORD`   | Yes        | —                       | Admin login password                                                                                                  |
 | `ADMIN_JWT_SECRET` | Yes        | —                       | Long random secret for admin session JWTs                                                                             |
-| `RESEND_API_KEY`   | Yes (prod) | —                       | Resend API key used to send transactional email                                                                       |
+| `EMAIL_PROVIDER`   | No         | `email.provider` (config) | Mail transport: `resend` or `smtp`. Overrides the active letter config.                                            |
+| `EMAIL_FROM`       | No         | `email.from` (config)   | Verified sender for either provider (alias of `RESEND_FROM`)                                                          |
+| `RESEND_API_KEY`   | Yes when provider=resend (prod) | —          | Resend API key used to send transactional email                                                                       |
 | `RESEND_FROM`      | No         | `Gehaltsdeckel Initiative <noreply@gehaltsdeckel.jetzt>` | Verified sender used for outbound email                                                  |
+| `SMTP_HOST`        | Yes when provider=smtp (prod) | `email.smtp.host` (config) | SMTP server hostname                                                                                       |
+| `SMTP_PORT`        | No         | `email.smtp.port` or `587` | SMTP port (`465` = implicit TLS, `587` = STARTTLS)                                                                  |
+| `SMTP_SECURE`      | No         | `email.smtp.secure` or `false` | `true` for implicit TLS (port 465); `false` uses STARTTLS                                                       |
+| `SMTP_USER`        | No         | —                       | SMTP username (omit for an unauthenticated relay)                                                                     |
+| `SMTP_PASS`        | No         | —                       | SMTP password                                                                                                         |
+| `EMAIL_MESSAGE_DELAY_MS` | No   | `email.pacing.messageDelayMs` or `550` | Delay (ms) between one-by-one sends (zoom link mailing)                                            |
+| `EMAIL_BATCH_DELAY_MS` | No     | `email.pacing.batchDelayMs` or `1000` | Delay (ms) between 100-email batch chunks (campaigns, reminders)                                    |
 | `BACKUP_ENCRYPTION_KEY` | No    | `DATABASE_ENCRYPTION_KEY` | Separate SQLCipher key for backup files. Defaults to the live DB key.                                              |
 | `BACKUP_DIR`       | No         | `/app/backups`          | Directory for database backup files                                                                                   |
 | `BACKUP_KEEP`      | No         | `48`                    | Number of hourly backup files to retain                                                                               |
@@ -187,9 +248,38 @@ the app stopped, then start the app pointed at the new file.
 
 ## Email
 
-**Dev/demo:** Set `RESEND_API_KEY` to test real email delivery through Resend. Without an API key, development starts but email submission will fail when a route tries to send mail.
+The mail transport is chosen per letter via `email.provider` in the config, or
+overridden per-deployment with the `EMAIL_PROVIDER` env var. Two providers are
+supported:
 
-**Production:** `RESEND_API_KEY` is required. The app sends directly to Resend's Email API; SMTP, mailbox.org, and Haraka are not part of the production mail path. See `resend-email-setup.txt` for the Resend domain verification and deployment setup.
+- **`resend`** (default) — Resend's HTTP Email API. Set `RESEND_API_KEY`. See
+  `resend-email-setup.txt` for domain verification and deployment setup.
+- **`smtp`** — any SMTP server (mailbox.org, a self-hosted relay, Gmail, etc.)
+  via [nodemailer](https://nodemailer.com). Non-secret connection details
+  (`host`/`port`/`secure`) live in the letter config under `email.smtp` or in
+  `SMTP_HOST`/`SMTP_PORT`/`SMTP_SECURE`; credentials come from `SMTP_USER` /
+  `SMTP_PASS` only. SMTP has no batch endpoint, so batch sends loop per message.
+
+In both cases **secrets stay in env** — never put API keys or SMTP passwords in
+the committed config. The sender address is `email.from` (override with
+`EMAIL_FROM` / `RESEND_FROM`).
+
+**Pacing:** the mailing workers insert delays to stay under provider rate limits
+— `email.pacing.messageDelayMs` between one-by-one sends and
+`email.pacing.batchDelayMs` between 100-email batch chunks (defaults `550`/`1000`
+ms, tuned for Resend's ~2/s). Override per-deployment with
+`EMAIL_MESSAGE_DELAY_MS` / `EMAIL_BATCH_DELAY_MS` — raise them for a stricter SMTP
+relay, or lower them if your provider allows faster sends.
+
+**Dev/demo:** point `provider=smtp` at a local catcher like
+[Mailpit](https://github.com/axllent/mailpit)/MailHog on `localhost:1025`
+(`SMTP_SECURE=false`), or set `RESEND_API_KEY` to test real Resend delivery.
+Without a configured provider, development starts but email submission fails when
+a route tries to send mail.
+
+**Production:** the selected provider's credentials are required — `RESEND_API_KEY`
+for `resend`, or `SMTP_HOST` (plus `SMTP_USER`/`SMTP_PASS` for authenticated
+relays) for `smtp`. The app fails closed at startup if they're missing.
 
 ## Security
 
@@ -211,11 +301,15 @@ restarts, with automatic retries and dead-lettering.
 - Creating a campaign enqueues a `campaigns` job delivered at its scheduled time;
   a reconciler re-enqueues any due/failed campaign so sends survive restarts.
 - A cron scheduler fires the zoom-mailing check (every 60s) and the hourly backup.
-- The extension binary is **not on npm** — build it from the
-  [Honker repo](https://github.com/russellromney/honker)
-  (`cargo build --release -p honker-extension`) and point `HONKER_EXTENSION_PATH`
-  at the resulting `libhonker_ext.{dylib,so}`. The Docker images build it in a
-  Rust stage automatically.
+- The extension binary is **not on npm**, so it ships with this repo / image:
+  - **Local dev (macOS, Apple Silicon):** a prebuilt `vendor/libhonker_ext.dylib`
+    is committed and loaded by default (`bun run dev` works with no extra steps).
+  - **Docker / Linux:** the images build the Linux `libhonker_ext.so` from source
+    in a Rust stage and set `HONKER_EXTENSION_PATH` automatically.
+  - **Other local platforms (Linux/Intel macOS):** build it from the
+    [Honker repo](https://github.com/russellromney/honker)
+    (`cargo build --release -p honker-extension`) and point `HONKER_EXTENSION_PATH`
+    at the resulting `libhonker_ext.{dylib,so}`.
 
 ## Backups
 
@@ -259,8 +353,10 @@ Set in Dokploy UI or `.env`:
 
 - `DATABASE_ENCRYPTION_KEY` — SQLCipher key (required). Generate: `openssl rand -hex 32`
 - `BASE_URL` — public URL (e.g. `https://diaetendeckel.example.de`)
-- `RESEND_API_KEY` — Resend API key with send access
-- `RESEND_FROM` — optional verified sender override
+- `RESEND_API_KEY` — Resend API key with send access (when `provider=resend`)
+- `RESEND_FROM` / `EMAIL_FROM` — optional verified sender override
+- For SMTP instead: set `EMAIL_PROVIDER=smtp` + `SMTP_HOST`, `SMTP_PORT`,
+  `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`
 
 The `data` volume holds `diaetendeckel.db`; the `backups` volume holds the hourly
 encrypted snapshots. Back up the key separately from both.

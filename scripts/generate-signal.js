@@ -16,6 +16,10 @@
 import { mkdirSync, statSync, writeFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import cfg from "../config/letter.config.js";
+
+// Brand colours from the active letter theme.
+const C = cfg.theme.colors;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -137,23 +141,23 @@ try {
     return Buffer.from(await el.screenshot({ type: "png" })).toString("base64");
   }
 
-  // ---- Variants with default styling (red banners) ----
-  write("signal-beige.png", await compose(page, await capture("#f4f1ec"), "#f4f1ec", 0.78));
-  write("signal-white.png", await compose(page, await capture("#ffffff"), "#ffffff", 0.78));
+  // ---- Variants with default styling (banners) ----
+  write("signal-beige.png", await compose(page, await capture(C.fond), C.fond, 0.78));
+  write("signal-white.png", await compose(page, await capture(C.weiss), C.weiss, 0.78));
 
-  // ---- Red variant: red fill, transparent banners, all-white text ----
-  await page.evaluate(() => {
+  // ---- Accent variant: accent fill, transparent banners, all-white text ----
+  await page.evaluate((white) => {
     const h = document.querySelector(".headline");
-    h.style.color = "#ffffff";
+    h.style.color = white;
     h.querySelectorAll(".banner").forEach((b) => {
       b.style.background = "transparent";
-      b.style.color = "#ffffff";
+      b.style.color = white;
       b.style.padding = "0";
     });
-  });
+  }, C.weiss);
   await new Promise((r) => setTimeout(r, 150));
 
-  write("signal-red.png", await compose(page, await capture("#ff0000"), "#ff0000", 0.82));
+  write("signal-red.png", await compose(page, await capture(C.rot), C.rot, 0.82));
 } finally {
   await browser.close();
 }

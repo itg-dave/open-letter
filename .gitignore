@@ -3,6 +3,10 @@ node_modules
 .env
 *.log
 
+# Generated at server startup from *.template.html + the active letter config
+index.generated.html
+admin.generated.html
+
 # Encrypted SQLite database, WAL/SHM sidecars, backups
 data/
 *.db
@@ -14,8 +18,5 @@ design-extract
 bun.lock
 
 
-# DKIM private keys — never commit these
-haraka/config/dkim/*/private
 .DS_Store
-vendor/*.dylib
 design-export
