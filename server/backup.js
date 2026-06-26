@@ -14,9 +14,12 @@ import { openEncrypted, DB_PATH } from "../db/connection.js";
 const BACKUP_DIR = process.env.BACKUP_DIR || "/app/backups";
 const BACKUP_KEEP = Math.max(1, parseInt(process.env.BACKUP_KEEP || "48", 10));
 const BACKUP_GZIP = process.env.BACKUP_GZIP !== "false"; // gzip by default
-// Backups may use a distinct key; defaults to the live DB key.
-const BACKUP_KEY =
-  process.env.BACKUP_ENCRYPTION_KEY || process.env.DATABASE_ENCRYPTION_KEY || "";
+const BACKUP_KEY = process.env.BACKUP_ENCRYPTION_KEY || "";
+if (process.env.NODE_ENV === "production" && !BACKUP_KEY) {
+  throw new Error(
+    "BACKUP_ENCRYPTION_KEY must be set in production to protect encrypted backups.",
+  );
+}
 const ONE_HOUR = 60 * 60 * 1000;
 
 const sqlQuote = (s) => `'${String(s).replace(/'/g, "''")}'`;
@@ -49,7 +52,11 @@ export async function runBackup() {
     await exportEncrypted(tmp);
 
     if (BACKUP_GZIP) {
-      await pipeline(createReadStream(tmp), createGzip(), createWriteStream(finalPath));
+      await pipeline(
+        createReadStream(tmp),
+        createGzip(),
+        createWriteStream(finalPath),
+      );
       await unlink(tmp);
     } else {
       await rename(tmp, finalPath);

@@ -130,8 +130,19 @@ const ALLOWED_ORIGINS = new Set(
 );
 const isDev = process.env.NODE_ENV !== "production";
 const TRUST_PROXY = process.env.TRUST_PROXY === "true";
+
+function sanitizeUrl(value) {
+  try {
+    const url = new URL(String(value || "").trim());
+    if (url.protocol !== "https:") return "";
+    return url.toString();
+  } catch {
+    return "";
+  }
+}
+
 // Zoom event defaults come from the active letter config; env overrides win.
-const ZOOM_LINK = process.env.ZOOM_LINK || "";
+const ZOOM_LINK = sanitizeUrl(process.env.ZOOM_LINK || "");
 const ZOOM_EVENT_AT_DEFAULT =
   process.env.ZOOM_EVENT_AT || cfg.zoom?.eventAt || "2026-06-09T20:00:00+02:00";
 const ZOOM_EVENT_DURATION_MIN_DEFAULT = parseInt(
@@ -219,9 +230,14 @@ if (!isDev && !TRUST_PROXY) {
     "[security] TRUST_PROXY is not set — set TRUST_PROXY=true when running behind a reverse proxy for accurate IP rate-limiting.",
   );
 }
-if (!isDev && (!API_TOKEN_SECRET || API_TOKEN_SECRET === ADMIN_JWT_SECRET)) {
-  console.warn(
-    "[security] API_TOKEN_SECRET is not set or equals ADMIN_JWT_SECRET — set a distinct API_TOKEN_SECRET for public API tokens.",
+if (!isDev && !API_TOKEN_SECRET) {
+  throw new Error(
+    "API_TOKEN_SECRET must be set in production and must be distinct from ADMIN_JWT_SECRET.",
+  );
+}
+if (!isDev && API_TOKEN_SECRET === ADMIN_JWT_SECRET) {
+  throw new Error(
+    "API_TOKEN_SECRET must not equal ADMIN_JWT_SECRET in production.",
   );
 }
 
@@ -401,6 +417,51 @@ function bodyTooLarge(req) {
   return len > MAX_BODY_BYTES;
 }
 
+function escapeHtml(str) {
+  return String(str || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function concatUint8Arrays(chunks) {
+  let length = 0;
+  for (const chunk of chunks) length += chunk.length;
+  const result = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return result;
+}
+
+async function parseJsonBody(req) {
+  const len = parseInt(req.headers.get("content-length") || "0", 10);
+  if (len > MAX_BODY_BYTES) throw new Error("Payload too large");
+
+  const bodyStream = req.body;
+  if (bodyStream && typeof bodyStream.getReader === "function") {
+    const reader = bodyStream.getReader();
+    const chunks = [];
+    let size = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        size += value.byteLength || value.length || 0;
+        if (size > MAX_BODY_BYTES) throw new Error("Payload too large");
+        chunks.push(value);
+      }
+    }
+    const text = new TextDecoder().decode(concatUint8Arrays(chunks));
+    return JSON.parse(text);
+  }
+
+  return await parseJsonBody(req);
+}
+
 async function constantTimePasswordMatches(submitted) {
   const [left, right] = await Promise.all([
     sha256Hex(String(submitted || "")),
@@ -521,8 +582,9 @@ async function sleep(ms) {
 }
 
 function buildZoomLinkInfo(zoomLink) {
-  const linkPart = zoomLink
-    ? `<p>Hier geht's direkt zum Zoom: <a href="${zoomLink}">${zoomLink}</a></p>`
+  const safeLink = sanitizeUrl(zoomLink);
+  const linkPart = safeLink
+    ? `<p>Hier geht's direkt zum Zoom: <a href="${escapeHtml(safeLink)}">${escapeHtml(safeLink)}</a></p>`
     : `<p>Den Einwahllink schicken wir dir rechtzeitig vor dem Termin per E-Mail.</p>`;
   return linkPart + zoomCalendarButton(ZOOM_ICS_URL);
 }
@@ -1060,7 +1122,7 @@ const server = Bun.serve({
 
           if (bodyTooLarge(req))
             return json({ error: "Payload too large" }, 413);
-          const body = await req.json();
+          const body = await parseJsonBody(req);
           const name = sanitize(body.name);
           const email = sanitizeEmail(body.email);
           const kv = sanitize(body.kv || "").replace(/^KV\s*/i, "");
@@ -1165,7 +1227,7 @@ const server = Bun.serve({
 
           if (bodyTooLarge(req))
             return json({ error: "Payload too large" }, 413);
-          const body = await req.json();
+          const body = await parseJsonBody(req);
           const name = sanitize(body.name);
           const email = sanitizeEmail(body.email);
           const kv = sanitize(body.kv || "").replace(/^KV\s*/i, "");
@@ -1265,7 +1327,7 @@ const server = Bun.serve({
 
           if (bodyTooLarge(req))
             return json({ error: "Payload too large" }, 413);
-          const body = await req.json();
+          const body = await parseJsonBody(req);
           const email = sanitizeEmail(body.email);
           if (!isValidEmail(email)) return json({ ok: true });
 
@@ -1345,7 +1407,7 @@ const server = Bun.serve({
 
           if (bodyTooLarge(req))
             return json({ error: "Payload too large" }, 413);
-          const body = await req.json();
+          const body = await parseJsonBody(req);
           const email = sanitizeEmail(body.email);
 
           if (!isValidEmail(email)) {
@@ -1524,7 +1586,7 @@ const server = Bun.serve({
           const email = await resolveEmailFromToken(req.params.token);
           if (!email) return json({ ok: false }, 404);
 
-          const body = await req.json();
+          const body = await parseJsonBody(req);
           const name = sanitize(body.name || "");
           const kv = sanitize(body.kv || "").replace(/^KV\s*/i, "");
           const occupation = sanitize(body.occupation || "");
@@ -1742,7 +1804,7 @@ const server = Bun.serve({
 
           if (bodyTooLarge(req))
             return json({ error: "Payload too large" }, 413);
-          const body = await req.json();
+          const body = await parseJsonBody(req);
           const ok = await constantTimePasswordMatches(body.password);
           if (!ok) return json({ error: "Unauthorized" }, 401);
 
@@ -1762,7 +1824,7 @@ const server = Bun.serve({
         return adminJson(req, async () => {
           if (bodyTooLarge(req))
             return json({ error: "Payload too large" }, 413);
-          const body = await req.json();
+          const body = await parseJsonBody(req);
           const name = sanitize(body.name, 120);
           const subject = sanitize(body.subject, 240);
           const htmlBody = sanitizeHtml(body.html_body);
@@ -1789,7 +1851,7 @@ const server = Bun.serve({
         return adminJson(req, async () => {
           if (bodyTooLarge(req))
             return json({ error: "Payload too large" }, 413);
-          const body = await req.json();
+          const body = await parseJsonBody(req);
           const subject = sanitize(body.subject, 240);
           const htmlBody = sanitizeHtml(body.html_body);
           if (!subject || !htmlBody)
@@ -1824,7 +1886,7 @@ const server = Bun.serve({
         return adminJson(req, async () => {
           if (bodyTooLarge(req))
             return json({ error: "Payload too large" }, 413);
-          const body = await req.json();
+          const body = await parseJsonBody(req);
           const templateId = parseInt(body.template_id, 10);
           const subject = sanitize(body.subject, 240);
           const scheduledAt = new Date(body.scheduled_at);
@@ -1971,7 +2033,7 @@ const server = Bun.serve({
         return adminJson(req, async () => {
           if (bodyTooLarge(req))
             return json({ error: "Payload too large" }, 413);
-          const body = await req.json();
+          const body = await parseJsonBody(req);
           const eventDate = new Date(body.eventAt);
           if (Number.isNaN(eventDate.getTime())) {
             return json({ error: "Ungültiges Datum" }, 400);
@@ -2022,7 +2084,7 @@ const server = Bun.serve({
         return adminJson(req, async () => {
           if (bodyTooLarge(req))
             return json({ error: "Payload too large" }, 413);
-          const body = await req.json();
+          const body = await parseJsonBody(req);
           if (!Array.isArray(body.milestones)) {
             return json({ error: "milestones muss ein Array sein" }, 400);
           }
@@ -2041,7 +2103,7 @@ const server = Bun.serve({
         return adminJson(req, async () => {
           if (bodyTooLarge(req))
             return json({ error: "Payload too large" }, 413);
-          const body = await req.json();
+          const body = await parseJsonBody(req);
           const to = String(body.to || "").trim();
           const kind = body.kind;
           if (!to || !isValidEmail(to)) {
@@ -2081,7 +2143,7 @@ const server = Bun.serve({
         return adminJson(req, async () => {
           if (bodyTooLarge(req))
             return json({ error: "Payload too large" }, 413);
-          const body = await req.json();
+          const body = await parseJsonBody(req);
           const cfg = await getZoomConfig();
           return json({
             html: renderEmailHtml(sanitizeHtml(body.html_body), {
@@ -2105,7 +2167,7 @@ const server = Bun.serve({
         return adminJson(req, async () => {
           if (bodyTooLarge(req))
             return json({ error: "Payload too large" }, 413);
-          const body = await req.json();
+          const body = await parseJsonBody(req);
           const to = String(body.to || "").trim();
           const templateId = parseInt(body.template_id, 10);
           if (!to || !isValidEmail(to)) {
@@ -2251,7 +2313,7 @@ const server = Bun.serve({
         return adminJson(req, async () => {
           if (bodyTooLarge(req))
             return json({ error: "Payload too large" }, 413);
-          const body = await req.json();
+          const body = await parseJsonBody(req);
           const from = String(body.from || "").trim();
           const to = String(body.to || "").trim();
           if (!from || !to || from === to) {
@@ -2269,7 +2331,7 @@ const server = Bun.serve({
         return adminJson(req, async () => {
           if (bodyTooLarge(req))
             return json({ error: "Payload too large" }, 413);
-          const body = await req.json();
+          const body = await parseJsonBody(req);
           const canonical = String(body.canonical || "").trim();
           const outlier = String(body.outlier || "").trim();
           if (!canonical || !outlier) {
@@ -2303,7 +2365,7 @@ const server = Bun.serve({
         return adminJson(req, async () => {
           if (bodyTooLarge(req))
             return json({ error: "Payload too large" }, 413);
-          const body = await req.json();
+          const body = await parseJsonBody(req);
           const kreisverband = String(body.kreisverband || "").trim();
           const state = String(body.state || "").trim();
           if (!kreisverband || !state) {
@@ -2349,7 +2411,7 @@ const server = Bun.serve({
         return adminJson(req, async () => {
           if (bodyTooLarge(req))
             return json({ error: "Payload too large" }, 413);
-          const body = await req.json();
+          const body = await parseJsonBody(req);
           const from = String(body.from || "").trim();
           const to = String(body.to || "").trim();
           if (!from || !to || from === to) {
@@ -2366,7 +2428,7 @@ const server = Bun.serve({
         return adminJson(req, async () => {
           if (bodyTooLarge(req))
             return json({ error: "Payload too large" }, 413);
-          const body = await req.json();
+          const body = await parseJsonBody(req);
           const canonical = String(body.canonical || "").trim();
           const outlier = String(body.outlier || "").trim();
           if (!canonical || !outlier) {
